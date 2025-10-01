@@ -142,7 +142,7 @@ class ProcessadorPDFJuridico:
         """
         try:
             # Renderiza página em imagem (resolução otimizada para velocidade)
-            pix = page.get_pixmap(dpi=200)  # 200 DPI = bom equilíbrio velocidade/qualidade
+            pix = page.get_pixmap(dpi=300)  # 200 DPI = bom equilíbrio velocidade/qualidade
             
             # Converte para PIL Image
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)

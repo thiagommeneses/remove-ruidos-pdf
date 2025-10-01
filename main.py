@@ -66,48 +66,59 @@ class ProcessadorPDFJuridico:
     def _detectar_tipo_pagina(self, page) -> str:
         """
         Detecta se página contém texto extraível ou é imagem escaneada.
+        Específico para PDFs jurídicos com documentos escaneados.
         
         Returns:
             'texto', 'imagem' ou 'hibrida'
         """
         texto = page.get_text()
-        images = page.get_images()
+        images = page.get_images(full=True)
         
         # Se não tem imagens, é puramente texto
         if len(images) == 0:
             return 'texto'
         
-        # Calcula área total das imagens vs área da página
-        page_rect = page.rect
-        page_area = page_rect.width * page_rect.height
-        
-        total_image_area = 0
+        # Heurística 1: Analisa tamanho das imagens em bytes
+        # Imagens grandes (> 50KB) geralmente são documentos escaneados
+        tem_imagem_grande = False
         for img_info in images:
             try:
                 xref = img_info[0]
-                img_rect = page.get_image_bbox(img_info)
-                if img_rect:
-                    img_area = abs(img_rect.width * img_rect.height)
-                    total_image_area += img_area
+                base_image = page.parent.extract_image(xref)
+                if base_image and len(base_image.get("image", b"")) > 100000:  # 50000 = 50KB, 100000 = 100KB
+                    tem_imagem_grande = True
+                    break
             except:
                 continue
         
-        # Se imagens ocupam mais de 30% da página, considerar híbrida/imagem
-        if page_area > 0:
-            image_ratio = total_image_area / page_area
-            
-            # Imagens grandes indicam conteúdo escaneado
-            if image_ratio > 0.3:
-                # Se tem muito texto (> 500 chars), é híbrida mas precisa OCR
-                if len(texto.strip()) > 500:
-                    return 'hibrida'
-                else:
-                    return 'imagem'
+        # Heurística 2: Proporção de texto vs imagens
+        texto_limpo = texto.strip()
+        num_chars = len(texto_limpo)
+        num_images = len(images)
         
-        # Pouco texto + imagens = escaneado
-        if len(texto.strip()) < 100 and len(images) > 0:
+        # PDFs jurídicos típicos:
+        # - Capa: texto puro, sem imagens ou imagens pequenas (logos)
+        # - Documentos escaneados: muito texto extraível (metadados) + imagens grandes
+        
+        if tem_imagem_grande:
+            # Se tem imagem grande, provavelmente é documento escaneado
+            if num_chars > 200:
+                # Muito texto + imagem grande = híbrida (texto é metadado, imagem é conteúdo)
+                return 'hibrida'
+            else:
+                # Pouco texto + imagem grande = imagem pura
+                return 'imagem'
+        
+        # Heurística 3: Múltiplas imagens pequenas podem ser logos/selos
+        if num_images >= 2 and num_chars > 500:
+            # Múltiplas imagens + muito texto = pode ser página híbrida
+            return 'hibrida'
+        
+        # Pouco texto + alguma imagem = provavelmente escaneado
+        if num_chars < 100 and num_images > 0:
             return 'imagem'
         
+        # Padrão: página de texto
         return 'texto'
     
     def _preprocessar_imagem(self, img: Image.Image) -> Image.Image:
@@ -190,8 +201,16 @@ class ProcessadorPDFJuridico:
             
             # Detecta páginas que precisam de OCR
             paginas_ocr = []
+            print("\n   Analisando tipo de cada página:")
             for i in range(total_paginas):
                 tipo = self._detectar_tipo_pagina(doc[i])
+                
+                # Debug: mostra informações da detecção
+                page = doc[i]
+                texto = page.get_text()
+                images = page.get_images(full=True)
+                print(f"      Página {i+1}: {tipo.upper():8} | {len(texto):4} chars | {len(images)} imagens")
+                
                 if tipo in ['imagem', 'hibrida'] and self.usar_ocr:
                     paginas_ocr.append(i)
             

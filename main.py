@@ -31,11 +31,13 @@ class ProcessadorPDFJuridico:
         arquivo_limpeza: str = "limpeza.toml",
         arquivo_hierarquia: str = "hierarquia.toml",
         usar_ocr: bool = True,
+        dpi_ocr: int = 150,  # DPI reduzido para velocidade (150 é 2x mais rápido que 300)
     ):
         """Inicializa o processador com dois arquivos de configuração."""
         self.arquivo_limpeza = arquivo_limpeza
         self.arquivo_hierarquia = arquivo_hierarquia
         self.usar_ocr = usar_ocr and OCR_DISPONIVEL
+        self.dpi_ocr = dpi_ocr
         
         self.padroes_limpeza = self._carregar_padroes(arquivo_limpeza)
         self.padroes_hierarquia = self._carregar_padroes(arquivo_hierarquia)
@@ -44,8 +46,10 @@ class ProcessadorPDFJuridico:
         self.config_hierarquia = self.padroes_hierarquia.get("configuracoes", {})
         
         if self.usar_ocr:
-            # Configuração otimizada do Tesseract (modo mais rápido)
-            self.tesseract_config = '--psm 6 --oem 3'  # PSM 6 = bloco uniforme, OEM 3 = modo padrão
+            # Configuração MAIS RÁPIDA do Tesseract
+            # PSM 6 = bloco uniforme de texto (ideal para documentos)
+            # OEM 1 = motor neural network (mais rápido que OEM 3)
+            self.tesseract_config = '--psm 6 --oem 1'
     
     def _carregar_padroes(self, arquivo: str) -> Dict:
         """Carrega padrões de um arquivo TOML."""
@@ -85,7 +89,7 @@ class ProcessadorPDFJuridico:
             try:
                 xref = img_info[0]
                 base_image = page.parent.extract_image(xref)
-                if base_image and len(base_image.get("image", b"")) > 100000:  # 50000 = 50KB, 100000 = 100KB
+                if base_image and len(base_image.get("image", b"")) > 50000:  # 50KB
                     tem_imagem_grande = True
                     break
             except:
@@ -138,11 +142,11 @@ class ProcessadorPDFJuridico:
     def _extrair_texto_ocr_pagina(self, page, page_num: int) -> str:
         """
         Extrai texto de uma página usando OCR otimizado.
-        Tempo alvo: < 800ms por página.
+        Tempo alvo: < 1s por página com 150 DPI.
         """
         try:
-            # Renderiza página em imagem (resolução otimizada para velocidade)
-            pix = page.get_pixmap(dpi=300)  # 200 DPI = bom equilíbrio velocidade/qualidade
+            # Renderiza página em imagem com DPI configurável
+            pix = page.get_pixmap(dpi=self.dpi_ocr)
             
             # Converte para PIL Image
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
@@ -157,9 +161,10 @@ class ProcessadorPDFJuridico:
                 config=self.tesseract_config
             )
             
-            # Para páginas híbridas, pode combinar com texto extraível se útil
-            # mas geralmente o OCR substitui completamente
-            return texto_ocr.strip()
+            # Limpa caracteres problemáticos de encoding
+            texto_limpo = self._limpar_encoding_ocr(texto_ocr)
+            
+            return texto_limpo.strip()
             
         except Exception as e:
             print(f"      ⚠️  Erro no OCR da página {page_num}: {e}")
@@ -168,6 +173,30 @@ class ProcessadorPDFJuridico:
                 return page.get_text()
             except:
                 return ""
+    
+    def _limpar_encoding_ocr(self, texto: str) -> str:
+        """
+        Limpa problemas comuns de encoding em OCR.
+        Remove caracteres de controle e normaliza Unicode.
+        """
+        import unicodedata
+        
+        # Normaliza Unicode (NFKD = decomposição compatível)
+        texto = unicodedata.normalize('NFKD', texto)
+        
+        # Remove caracteres de controle exceto \n, \t, \r
+        texto_limpo = []
+        for char in texto:
+            cat = unicodedata.category(char)
+            if cat[0] != 'C' or char in ['\n', '\t', '\r', ' ']:
+                texto_limpo.append(char)
+        
+        texto = ''.join(texto_limpo)
+        
+        # Normaliza espaços
+        texto = re.sub(r'[ \t]+', ' ', texto)
+        
+        return texto
     
     def extrair_metadados(self, texto: str) -> Dict:
         """Extrai metadados importantes antes de removê-los."""
@@ -561,11 +590,25 @@ class ProcessadorPDFJuridico:
 def main():
     """Função principal."""
     if len(sys.argv) < 2:
-        print("Uso: python main.py <arquivo.pdf> [--sem-ocr]")
+        print("Uso: python main.py <arquivo.pdf> [--sem-ocr] [--dpi=150]")
+        print("\nOpções:")
+        print("  --sem-ocr      Desativa OCR")
+        print("  --dpi=N        Define DPI do OCR (padrão: 150, recomendado: 150-200)")
+        print("                 Menor = mais rápido | Maior = melhor qualidade")
         return
     
     arquivo_pdf = sys.argv[1]
     usar_ocr = "--sem-ocr" not in sys.argv
+    
+    # Extrai DPI dos argumentos
+    dpi_ocr = 150  # padrão
+    for arg in sys.argv[2:]:
+        if arg.startswith("--dpi="):
+            try:
+                dpi_ocr = int(arg.split("=")[1])
+                print(f"DPI configurado: {dpi_ocr}")
+            except ValueError:
+                print("Valor de DPI inválido, usando padrão (150)")
     
     if not Path(arquivo_pdf).exists():
         print(f"Arquivo não encontrado: {arquivo_pdf}")
@@ -585,7 +628,8 @@ def main():
     processador = ProcessadorPDFJuridico(
         "limpeza.toml", 
         "hierarquia.toml",
-        usar_ocr=usar_ocr
+        usar_ocr=usar_ocr,
+        dpi_ocr=dpi_ocr
     )
     processador.processar(
         arquivo_pdf=arquivo_pdf,

@@ -1,11 +1,12 @@
-# REQUISITOS PIP EXTRACTJUR v5
-# PyMuPDF==1.26.4 # Foi usado apenas nas versões anteriores a 5.0
+# REQUISITOS PIP EXTRACTJUR v5.0
+# Dependências principais
+PyMuPDF==1.26.4 #ou pymupdf==1.24.13
 pymupdf4llm==0.0.27
-PyPDF2==3.0.1
+# PyPDF2==3.0.1  # Não mais necessário na v5.0
 toml==0.10.2
 
 # Ferramentas de desenvolvimento (linters e formatadores)
-black==25.9.0
+black==25.9.0 # Se falhar, use versão anterior: black==24.10.0
 flake8==7.3.0
 isort==6.1.0
 pylint==3.3.8

@@ -1,0 +1,69 @@
+# Padrões de Limpeza - Versão Simplificada
+version = "4.1.0"
+
+[metadados_processuais]
+patterns = [
+    "Processo:\\s*[\\d\\.-]+",
+    "Movimentaca[oã]o?\\s+\\d+\\s*:\\s*\\w+",
+    "Arquivo\\s+\\d+\\s*:\\s*[\\w_]+\\.pdf",
+    "Usuário:\\s*.+?-\\s*Data:\\s*\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}",
+    "[A-ZÀ-Ú][A-ZÀ-Ú\\s]+-\\s*VARA\\s+[A-ZÀ-Ú]+",
+    "PROCESSO\\s+CRIMINAL\\s*->\\s*Procedimentos\\s+Investigatórios\\s*->\\s*Inquérito\\s+Policial",
+    "Valor:\\s*R\\$\\s*\\d*"
+]
+
+[assinaturas_digitais]
+patterns = [
+    "Tribunal\\s+de\\s+Justiça\\s+do\\s+Estado\\s+de\\s+Goiás",
+    "Documento\\s+Assinado\\s+e\\s+Publicado\\s+Digitalmente\\s+em\\s+\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}",
+    "Assinado\\s+por\\s+[A-ZÀ-Ú\\s]+",
+    "Localizar\\s+pelo\\s+código:\\s*\\d+,\\s*no\\s+endereço:\\s*https?://[^\\s]+",
+    "código:\\s*\\d+,\\s*no\\s+endereço:",
+    ":\\s*\\d{15,},\\s*no\\s+endereço:",
+    "\\d{15,}",
+    "https?://projudi\\.tjgo\\.jus\\.br\\S*"
+]
+
+[cabecalhos_institucionais]
+patterns = [
+    "ESTADO\\s+DE\\s+GOIÁS",
+    "SECRETARIA\\s+DE\\s+ESTADO\\s+DA\\s+SEGURANÇA\\s+PÚBLICA",
+    "POLÍCIA\\s+CIVIL",
+    "REGISTRO\\s+DE\\s+ATENDIMENTO\\s+INTEGRADO",
+    "Nº\\s*\\d+",
+    "EMITIDO\\s+EM\\s+\\d{2}/\\d{2}/\\d{4}\\s+às\\s+\\d{1,2}:\\d{2}"
+]
+
+[paginacao]
+patterns = [
+    "---\\s*Página\\s+\\d+\\s*---",
+    "Página\\s+\\d+\\s+de\\s+\\d+"
+]
+
+[rodape_links]
+patterns = [
+    "https?://raivirtual\\.ssp\\.go\\.gov\\.br\\S*",
+    "CÓDIGO\\s+DE\\s+VALIDAÇÃO:\\s*[a-fA-F0-9]+"
+]
+
+[separadores]
+patterns = [
+    "[_\\-=*]{8,}",
+    "[.]{8,}"
+]
+
+[configuracoes]
+ordem_processamento = [
+    "metadados_processuais",
+    "assinaturas_digitais",
+    "cabecalhos_institucionais",
+    "rodape_links",
+    "paginacao",
+    "separadores"
+]
+
+normalizar_espacos = true
+remover_linhas_vazias_excessivas = true
+aplicar_correcao_caracteres = false
+max_linhas_vazias_consecutivas = 1
+min_tamanho_linha_util = 2

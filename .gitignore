@@ -3,4 +3,5 @@ venv/
 .env
 tmp/
 temp/
-__pycache__
+__pycache__/
+uploads/*

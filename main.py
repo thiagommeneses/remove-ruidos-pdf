@@ -31,13 +31,15 @@ class ProcessadorPDFJuridico:
         arquivo_limpeza: str = "limpeza.toml",
         arquivo_hierarquia: str = "hierarquia.toml",
         usar_ocr: bool = True,
-        dpi_ocr: int = 150,  # DPI reduzido para velocidade (150 é 2x mais rápido que 300)
+        dpi_ocr: int = 150,
+        debug_imgs: bool = False,
     ):
         """Inicializa o processador com dois arquivos de configuração."""
         self.arquivo_limpeza = arquivo_limpeza
         self.arquivo_hierarquia = arquivo_hierarquia
         self.usar_ocr = usar_ocr and OCR_DISPONIVEL
         self.dpi_ocr = dpi_ocr
+        self.debug_imgs = debug_imgs
         
         self.padroes_limpeza = self._carregar_padroes(arquivo_limpeza)
         self.padroes_hierarquia = self._carregar_padroes(arquivo_hierarquia)
@@ -127,22 +129,46 @@ class ProcessadorPDFJuridico:
     
     def _preprocessar_imagem(self, img: Image.Image) -> Image.Image:
         """
-        Pré-processa imagem para melhorar OCR.
-        Rápido e eficiente para documentos jurídicos.
+        Pré-processa imagem para melhorar OCR em documentos jurídicos.
+        Foco: remover ruído, melhorar contraste, binarizar.
         """
         # Converte para escala de cinza
         img = img.convert('L')
         
-        # Aumenta contraste (melhora OCR em ~15%)
+        # Converte para array numpy
         img_array = np.array(img)
-        img_array = np.clip(img_array * 1.2, 0, 255).astype(np.uint8)
         
-        return Image.fromarray(img_array)
+        # 1. Aumenta contraste mais agressivamente
+        img_array = np.clip(img_array * 1.5, 0, 255).astype(np.uint8)
+        
+        # 2. Aplicar threshold adaptativo (binarização)
+        # Isso remove fundos cinzas e melhora muito o OCR
+        from PIL import ImageFilter
+        img = Image.fromarray(img_array)
+        
+        # Aumenta nitidez
+        img = img.filter(ImageFilter.SHARPEN)
+        
+        # Binarização usando threshold de Otsu (simulado)
+        img_array = np.array(img)
+        threshold = np.mean(img_array) * 0.9  # Threshold adaptativo
+        img_array = np.where(img_array > threshold, 255, 0).astype(np.uint8)
+        
+        # 3. Remove ruído de salt-and-pepper
+        img = Image.fromarray(img_array)
+        img = img.filter(ImageFilter.MedianFilter(size=3))
+        
+        return img
     
-    def _extrair_texto_ocr_pagina(self, page, page_num: int) -> str:
+    def _extrair_texto_ocr_pagina(self, page, page_num: int, debug_imgs: bool = False) -> str:
         """
         Extrai texto de uma página usando OCR otimizado.
         Tempo alvo: < 1s por página com 150 DPI.
+        
+        Args:
+            page: Página do PyMuPDF
+            page_num: Número da página
+            debug_imgs: Se True, salva imagens pré-processadas para debug
         """
         try:
             # Renderiza página em imagem com DPI configurável
@@ -151,12 +177,21 @@ class ProcessadorPDFJuridico:
             # Converte para PIL Image
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             
+            # Salva imagem original se debug
+            if debug_imgs:
+                img.save(f"debug_pag{page_num}_original.png")
+            
             # Pré-processa
-            img = self._preprocessar_imagem(img)
+            img_processada = self._preprocessar_imagem(img)
+            
+            # Salva imagem processada se debug
+            if debug_imgs:
+                img_processada.save(f"debug_pag{page_num}_processada.png")
+                print(f"      💾 Imagens de debug salvas: debug_pag{page_num}_*.png")
             
             # OCR com Tesseract otimizado
             texto_ocr = pytesseract.image_to_string(
-                img,
+                img_processada,
                 lang='por',
                 config=self.tesseract_config
             )
@@ -257,7 +292,7 @@ class ProcessadorPDFJuridico:
                     import time
                     inicio = time.time()
                     
-                    md_pagina = self._extrair_texto_ocr_pagina(page, i + 1)
+                    md_pagina = self._extrair_texto_ocr_pagina(page, i + 1, debug_imgs=self.debug_imgs)
                     
                     tempo = time.time() - inicio
                     print(f" ({tempo:.2f}s, {len(md_pagina)} chars)")
@@ -590,15 +625,20 @@ class ProcessadorPDFJuridico:
 def main():
     """Função principal."""
     if len(sys.argv) < 2:
-        print("Uso: python main.py <arquivo.pdf> [--sem-ocr] [--dpi=150]")
+        print("Uso: python main.py <arquivo.pdf> [opções]")
         print("\nOpções:")
         print("  --sem-ocr      Desativa OCR")
-        print("  --dpi=N        Define DPI do OCR (padrão: 150, recomendado: 150-200)")
-        print("                 Menor = mais rápido | Maior = melhor qualidade")
+        print("  --dpi=N        Define DPI do OCR (padrão: 150)")
+        print("  --debug        Salva imagens pré-processadas para debug")
+        print("\nExemplos:")
+        print("  python main.py doc.pdf")
+        print("  python main.py doc.pdf --dpi=200")
+        print("  python main.py doc.pdf --debug")
         return
     
     arquivo_pdf = sys.argv[1]
     usar_ocr = "--sem-ocr" not in sys.argv
+    debug_imgs = "--debug" in sys.argv
     
     # Extrai DPI dos argumentos
     dpi_ocr = 150  # padrão
@@ -609,6 +649,9 @@ def main():
                 print(f"DPI configurado: {dpi_ocr}")
             except ValueError:
                 print("Valor de DPI inválido, usando padrão (150)")
+    
+    if debug_imgs:
+        print("Modo DEBUG ativado - imagens serão salvas")
     
     if not Path(arquivo_pdf).exists():
         print(f"Arquivo não encontrado: {arquivo_pdf}")
@@ -629,7 +672,8 @@ def main():
         "limpeza.toml", 
         "hierarquia.toml",
         usar_ocr=usar_ocr,
-        dpi_ocr=dpi_ocr
+        dpi_ocr=dpi_ocr,
+        debug_imgs=debug_imgs
     )
     processador.processar(
         arquivo_pdf=arquivo_pdf,

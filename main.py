@@ -68,14 +68,46 @@ class ProcessadorPDFJuridico:
         Detecta se página contém texto extraível ou é imagem escaneada.
         
         Returns:
-            'texto' ou 'imagem'
+            'texto', 'imagem' ou 'hibrida'
         """
         texto = page.get_text()
         images = page.get_images()
         
-        # Se tem pouco texto e muitas imagens, provavelmente é escaneado
+        # Se não tem imagens, é puramente texto
+        if len(images) == 0:
+            return 'texto'
+        
+        # Calcula área total das imagens vs área da página
+        page_rect = page.rect
+        page_area = page_rect.width * page_rect.height
+        
+        total_image_area = 0
+        for img_info in images:
+            try:
+                xref = img_info[0]
+                img_rect = page.get_image_bbox(img_info)
+                if img_rect:
+                    img_area = abs(img_rect.width * img_rect.height)
+                    total_image_area += img_area
+            except:
+                continue
+        
+        # Se imagens ocupam mais de 30% da página, considerar híbrida/imagem
+        if page_area > 0:
+            image_ratio = total_image_area / page_area
+            
+            # Imagens grandes indicam conteúdo escaneado
+            if image_ratio > 0.3:
+                # Se tem muito texto (> 500 chars), é híbrida mas precisa OCR
+                if len(texto.strip()) > 500:
+                    return 'hibrida'
+                else:
+                    return 'imagem'
+        
+        # Pouco texto + imagens = escaneado
         if len(texto.strip()) < 100 and len(images) > 0:
             return 'imagem'
+        
         return 'texto'
     
     def _preprocessar_imagem(self, img: Image.Image) -> Image.Image:
@@ -108,17 +140,23 @@ class ProcessadorPDFJuridico:
             img = self._preprocessar_imagem(img)
             
             # OCR com Tesseract otimizado
-            texto = pytesseract.image_to_string(
+            texto_ocr = pytesseract.image_to_string(
                 img,
                 lang='por',
                 config=self.tesseract_config
             )
             
-            return texto.strip()
+            # Para páginas híbridas, pode combinar com texto extraível se útil
+            # mas geralmente o OCR substitui completamente
+            return texto_ocr.strip()
             
         except Exception as e:
             print(f"      ⚠️  Erro no OCR da página {page_num}: {e}")
-            return ""
+            # Fallback: tenta extrair texto normal
+            try:
+                return page.get_text()
+            except:
+                return ""
     
     def extrair_metadados(self, texto: str) -> Dict:
         """Extrai metadados importantes antes de removê-los."""
@@ -154,7 +192,7 @@ class ProcessadorPDFJuridico:
             paginas_ocr = []
             for i in range(total_paginas):
                 tipo = self._detectar_tipo_pagina(doc[i])
-                if tipo == 'imagem' and self.usar_ocr:
+                if tipo in ['imagem', 'hibrida'] and self.usar_ocr:
                     paginas_ocr.append(i)
             
             if paginas_ocr:
@@ -165,9 +203,9 @@ class ProcessadorPDFJuridico:
                 page = doc[i]
                 tipo_pagina = self._detectar_tipo_pagina(page)
                 
-                if tipo_pagina == 'imagem' and self.usar_ocr:
-                    # Usa OCR
-                    print(f"   Página {i + 1}/{total_paginas} [OCR]", end="")
+                if tipo_pagina in ['imagem', 'hibrida'] and self.usar_ocr:
+                    # Usa OCR para imagens e páginas híbridas
+                    print(f"   Página {i + 1}/{total_paginas} [{tipo_pagina.upper()}+OCR]", end="")
                     import time
                     inicio = time.time()
                     
@@ -178,11 +216,11 @@ class ProcessadorPDFJuridico:
                 else:
                     # Extração normal
                     md_pagina = pymupdf4llm.to_markdown(arquivo_pdf, pages=[i])
-                    print(f"   Página {i + 1}/{total_paginas} [Texto] ({len(md_pagina)} chars)")
+                    print(f"   Página {i + 1}/{total_paginas} [TEXTO] ({len(md_pagina)} chars)")
                 
                 metadados = self.extrair_metadados(md_pagina)
                 metadados["pagina_arquivo"] = i + 1
-                metadados["tipo_extracao"] = "ocr" if tipo_pagina == 'imagem' else "texto"
+                metadados["tipo_extracao"] = "ocr" if tipo_pagina in ['imagem', 'hibrida'] else "texto"
                 metadados_paginas.append(metadados)
                 
                 paginas_md.append(f"\n--- Página {i + 1} ---\n")

@@ -79,8 +79,8 @@ patterns = [
     '''Documento\s+assinado\s+eletronicamente\s+por\s+[^,]+,\s*[^,]+,\s*em\s+\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}''',
     # Token de celular (caso venha em linha separada)
     '''Token\s+de\s+celular\s+verificado,\s*sob\s+o\s+código\s+[a-f0-9-]+''',
-    # Observação sobre impressões digitais
-    '''Observação:\s*Havendo\s+necessidade\s+de\s+confronto\s+das\s+impressões\s+apostas.*?documento\s+de\s+caráter\s+científico\.''',
+    # Observação sobre impressões digitais (captura múltiplas linhas)
+    '''Observação:\s*Havendo\s+necessidade\s+de\s+confronto\s+das\s+impressões\s+apostas[\s\S]*?caráter\s+científico\.''',
     # Bloco do Tribunal (múltiplas linhas)
     '''Tribunal\s+de\s+Justiça\s+do\s+Estado\s+de\s+Goiás\s+Documento\s+Assinado\s+e\s+Publicado\s+Digitalmente.*?https://projudi\.tjgo\.jus\.br/\w+''',
     # Componentes individuais do bloco do Tribunal

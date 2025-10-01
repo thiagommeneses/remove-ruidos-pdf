@@ -127,11 +127,22 @@ class ProcessadorPDFJuridico:
         # Padrão: página de texto
         return 'texto'
     
-    def _preprocessar_imagem(self, img: Image.Image) -> Image.Image:
+    def _preprocessar_imagem(self, img: Image.Image, aumentar_resolucao: bool = False) -> Image.Image:
         """
         Pré-processa imagem para melhorar OCR em documentos jurídicos.
         Foco: remover ruído, melhorar contraste, binarizar.
+        
+        Args:
+            img: Imagem PIL
+            aumentar_resolucao: Se True, aumenta resolução artificialmente para melhor OCR
         """
+        # Aumenta resolução se a imagem for pequena
+        if aumentar_resolucao and (img.width < 1500 or img.height < 1500):
+            # Aumenta 2x usando LANCZOS (alta qualidade)
+            new_size = (img.width * 2, img.height * 2)
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+            print(f"      🔍 Resolução aumentada para {img.width}x{img.height}")
+        
         # Converte para escala de cinza
         img = img.convert('L')
         
@@ -160,46 +171,114 @@ class ProcessadorPDFJuridico:
         
         return img
     
+    def _extrair_imagens_da_pagina(self, page, page_num: int) -> List[Image.Image]:
+        """
+        Extrai as imagens embutidas na página do PDF.
+        Retorna lista de imagens PIL.
+        """
+        imagens = []
+        
+        try:
+            image_list = page.get_images(full=True)
+            
+            for img_index, img_info in enumerate(image_list):
+                xref = img_info[0]
+                
+                try:
+                    # Extrai a imagem do PDF
+                    base_image = page.parent.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    
+                    # Filtra imagens muito pequenas (provavelmente logos/ícones)
+                    if len(image_bytes) < 10000:  # Menor que 10KB
+                        continue
+                    
+                    # Converte para PIL Image
+                    import io
+                    img = Image.open(io.BytesIO(image_bytes))
+                    
+                    # Filtra por dimensões (ignora imagens muito pequenas)
+                    if img.width < 200 or img.height < 200:
+                        continue
+                    
+                    imagens.append(img)
+                    print(f"      📷 Imagem {img_index + 1}: {img.width}x{img.height}px, {len(image_bytes)/1024:.1f}KB")
+                    
+                except Exception as e:
+                    print(f"      ⚠️  Erro ao extrair imagem {img_index}: {e}")
+                    continue
+            
+        except Exception as e:
+            print(f"      ⚠️  Erro ao listar imagens da página {page_num}: {e}")
+        
+        return imagens
+    
+    def _extrair_texto_ocr_de_imagens(self, imagens: List[Image.Image], page_num: int, debug_imgs: bool = False) -> str:
+        """
+        Aplica OCR em uma lista de imagens extraídas.
+        Retorna o texto combinado de todas as imagens.
+        """
+        textos = []
+        
+        for idx, img in enumerate(imagens):
+            try:
+                # Salva imagem original se debug
+                if debug_imgs:
+                    img.save(f"debug_pag{page_num}_img{idx+1}_original.png")
+                
+                # Pré-processa COM aumento de resolução
+                img_processada = self._preprocessar_imagem(img, aumentar_resolucao=True)
+                
+                # Salva imagem processada se debug
+                if debug_imgs:
+                    img_processada.save(f"debug_pag{page_num}_img{idx+1}_processada.png")
+                
+                # OCR
+                texto_ocr = pytesseract.image_to_string(
+                    img_processada,
+                    lang='por',
+                    config=self.tesseract_config
+                )
+                
+                texto_limpo = self._limpar_encoding_ocr(texto_ocr)
+                
+                if texto_limpo.strip():
+                    textos.append(texto_limpo.strip())
+                    print(f"      ✓ OCR imagem {idx+1}: {len(texto_limpo)} chars")
+                
+            except Exception as e:
+                print(f"      ⚠️  Erro no OCR da imagem {idx+1}: {e}")
+                continue
+        
+        # Combina textos de todas as imagens
+        return "\n\n".join(textos)
     def _extrair_texto_ocr_pagina(self, page, page_num: int, debug_imgs: bool = False) -> str:
         """
-        Extrai texto de uma página usando OCR otimizado.
-        Tempo alvo: < 1s por página com 150 DPI.
+        Extrai texto de uma página usando OCR.
+        NOVA ABORDAGEM: Extrai e processa imagens embutidas individualmente.
         
         Args:
             page: Página do PyMuPDF
             page_num: Número da página
-            debug_imgs: Se True, salva imagens pré-processadas para debug
+            debug_imgs: Se True, salva imagens para debug
         """
         try:
-            # Renderiza página em imagem com DPI configurável
-            pix = page.get_pixmap(dpi=self.dpi_ocr)
+            print(f"      Extraindo imagens embutidas...")
             
-            # Converte para PIL Image
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            # Extrai imagens embutidas da página
+            imagens = self._extrair_imagens_da_pagina(page, page_num)
             
-            # Salva imagem original se debug
-            if debug_imgs:
-                img.save(f"debug_pag{page_num}_original.png")
+            if not imagens:
+                print(f"      ⚠️  Nenhuma imagem grande encontrada, usando página inteira")
+                # Fallback: renderiza página inteira
+                pix = page.get_pixmap(dpi=self.dpi_ocr)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                imagens = [img]
             
-            # Pré-processa
-            img_processada = self._preprocessar_imagem(img)
+            # Aplica OCR nas imagens
+            texto_final = self._extrair_texto_ocr_de_imagens(imagens, page_num, debug_imgs)
             
-            # Salva imagem processada se debug
-            if debug_imgs:
-                img_processada.save(f"debug_pag{page_num}_processada.png")
-                print(f"      💾 Imagens de debug salvas: debug_pag{page_num}_*.png")
-            
-            # OCR com Tesseract otimizado
-            texto_ocr = pytesseract.image_to_string(
-                img_processada,
-                lang='por',
-                config=self.tesseract_config
-            )
-            
-            # Limpa caracteres problemáticos de encoding
-            texto_limpo = self._limpar_encoding_ocr(texto_ocr)
-            
-            return texto_limpo.strip()
+            return texto_final
             
         except Exception as e:
             print(f"      ⚠️  Erro no OCR da página {page_num}: {e}")

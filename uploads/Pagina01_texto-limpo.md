@@ -2,32 +2,57 @@
 PÁGINA 1
 ============================================================
 
-Processo Nº: 5607437-31.2024.8.09.0085
-1. Dados Processo
+# **_Processo Nº: 5607437-31.2024.8.09.0085_**
+
+## **1. Dados Processo**
+
 Juízo...............................: Itapuranga - Vara Criminal
+
 Prioridade.......................: Normal
-Tipo Ação.......................:
-PROCESSO CRIMINAL -> Procedimento Comum -> Ação Penal -
+
+Tipo Ação.......................: PROCESSO CRIMINAL -> Procedimento Comum -> Ação Penal
 Procedimento Ordinário
+
 Segredo de Justiça.........: NÃO
+
 Fase Processual.............: Conhecimento
+
 Data recebimento...........: 21/06/2024 00:00:00
+
 Valor da Causa...............: R$
-2. Partes Processos:
+
+## **2. Partes Processos:**
+
 Polo Ativo
+
 GOIAS MP PROCURADORIA GERAL DE JUSTICA
 
 Polo Passivo
+
 LUANA BARBOSA FERREIRA
 
 ============================================================
-PÁGINA 2 | MOVIMENTAÇÃO 1 (Peticão)
+PÁGINA 2 | MOVIMENTAÇÃO 1 (Peticão Enviada**)
 ============================================================
 
-*Página sem conteúdo após limpeza*
+****
+
+** Enviada**
+
+****
+****
+****
+**
 
 ============================================================
-PÁGINA 3 | MOVIMENTAÇÃO 1 (Peticão)
+PÁGINA 3 | MOVIMENTAÇÃO 1 (Peticão Enviada**)
 ============================================================
 
-*Página sem conteúdo após limpeza*
+****
+
+** Enviada**
+
+****
+****
+****
+**

@@ -1,6 +1,7 @@
 # Ambientes virtuais
 .venv/
 venv/
+venv2/
 env/
 
 # Variáveis de ambiente

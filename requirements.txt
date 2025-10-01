@@ -3,3 +3,9 @@
 pymupdf4llm==0.0.27
 PyPDF2==3.0.1
 toml==0.10.2
+
+# Ferramentas de desenvolvimento (linters e formatadores)
+black==25.9.0
+flake8==7.3.0
+isort==6.1.0
+pylint==3.3.8

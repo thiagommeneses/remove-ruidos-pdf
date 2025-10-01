@@ -1,7 +1,40 @@
+# Ambientes virtuais
 .venv/
 venv/
+env/
+
+# Variáveis de ambiente
 .env
+
+# Temporários
 tmp/
 temp/
+
+# Cache Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Uploads
 uploads/
+
+# Cache de linters e ferramentas
+.mypy_cache/
+.pytest_cache/
+.coverage
+.pylint.d/
+htmlcov/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build e distribuição
+build/
+dist/
+*.egg-info/

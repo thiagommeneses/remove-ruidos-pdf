@@ -9,6 +9,7 @@ patterns = [
     "Usuário:\\s*.+?-\\s*Data:\\s*\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2}",
     "[A-ZÀ-Ú][A-ZÀ-Ú\\s]+-\\s*VARA\\s+[A-ZÀ-Ú]+",
     "PROCESSO\\s+CRIMINAL\\s*->\\s*Procedimentos\\s+Investigatórios\\s*->\\s*Inquérito\\s+Policial",
+    "PROCESSO\\s+CRIMINAL\\s*->\\s*Procedimento\\s+Comum\\s*->\\s*Ação\\s+Penal\\s*-\\s*Procedimento\\s+Ordinário",
     "Valor:\\s*R\\$\\s*\\d*"
 ]
 

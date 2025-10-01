@@ -1,0 +1,254 @@
+# Hierarquia e Estruturação de Documentos Jurídicos
+# Versão: 1.0.0
+
+version = "1.0.0"
+
+# ======================================================================
+# CONFIGURAÇÃO DE HIERARQUIA (H1-H4)
+# ======================================================================
+
+[header_config.h1]
+description = "Nível 1 - Documentos Principais"
+patterns = [
+    "AUTO DE PRISÃO EM FLAGRANTE",
+    "TERMO DE DEPOIMENTO DE CONDUTOR",
+    "TERMO DE QUALIFICAÇÃO E INTERROGATÓRIO",
+    "NOTA DE CULPA",
+    "CERTIDÃO",
+    "REGISTRO DE ATENDIMENTO INTEGRADO",
+    "GUIA DE RECOLHIMENTO DE PRESO",
+    "DESPACHO",
+    "RELATÓRIO POLICIAL",
+    "TERMO DE EXIBIÇÃO E APREENSÃO",
+    "CERTIDÃO DE ANTECEDENTES CRIMINAIS",
+    "Certidão de Antecedentes Criminais",
+    "REQUISIÇÃO DE PERÍCIA",
+    "RELATÓRIO MÉDICO",
+    "LAUDO DE PERÍCIA CRIMINAL",
+    "AUTO DE EXIBIÇÃO E APREENSÃO",
+    "Ficha de Identificação",
+    "BNMP",
+    "RESULTADO DA PESQUISA",
+    "RELATÓRIO DA SITUAÇÃO PROCESSUAL EXECUTÓRIA",
+    "PORTARIA"
+]
+font_size_min = 12
+is_uppercase = true
+is_bold = true
+
+[header_config.h2]
+description = "Nível 2 - Seções Estruturais"
+patterns = [
+    '''^\d+\.\s+Dados Processo''',
+    '''^\d+\.\s+Partes Processos:''',
+    "CONSTATAÇÃO DE DROGAS",
+    "DADOS DO REGISTRO",
+    "DADOS DO FATO",
+    "PESSOAS ENVOLVIDAS",
+    "DROGAS",
+    "AMBIENTE",
+    "RECURSOS ENVOLVIDOS",
+    '''^\d+\s+HISTÓRICO''',
+    '''^\d+\s+MATERIAL''',
+    '''^\d+\s+OBJETIVO DOS EXAMES''',
+    '''^\d+\s+EXAMES, RESULTADOS E CONCLUSÃO''',
+    '''^\d+\s+CUSTÓDIA DO MATERIAL''',
+    "PROCESSO DE EXECUÇÃO",
+    "PROCESSOS CRIMINAIS",
+    "INCIDENTES CONCEDIDOS",
+    "PENDÊNCIAS",
+    "TERMO DE DEPOIMENTO",
+    "NARRATIVA"
+]
+font_size_min = 11
+is_bold = true
+
+[header_config.h3]
+description = "Nível 3 - Subseções de Conteúdo"
+patterns = [
+    "Polo Ativo",
+    "Polo Passivo",
+    '''^\d+ª PESSOA''',
+    "CÁLCULOS DA PENA:",
+    "INCIDENTES CONCEDIDOS",
+    "NARRATIVA",
+    "RELATO PM:",
+    "RELATO PC:"
+]
+font_size_min = 10
+is_bold = true
+
+[header_config.h4]
+description = "Nível 4 - Títulos de Seções Específicas"
+patterns = [
+    "Dados Processuais",
+    "Características",
+    "Dados Pessoais"
+]
+font_size_min = 10
+
+# ======================================================================
+# PADRÕES DE PRESERVAÇÃO
+# ======================================================================
+
+[padroes_preservar]
+description = "Conteúdo jurídico importante que nunca deve ser removido"
+patterns = [
+    # Mandado de prisão
+    '''MANDADO DE PRISÃO[\s\S]{0,50}?(?:CIVIL|CRIMINAL)''',
+    '''Data de validade:.*''',
+    '''Síntese da decisão:.*''',
+    '''Espécie de prisão:.*''',
+    '''Tipificação Penal:.*''',
+    '''Prazo da Prisão:.*''',
+    
+    # Auto de prisão
+    "AUTO DE PRISÃO EM FLAGRANTE",
+    '''Nº do Documento:.*''',
+    '''Nome do responsável pela comunicação:.*''',
+    '''Data da Prisão:.*''',
+    "TERMO DE QUALIFICAÇÃO E INTERROGATÓRIO",
+    "NOTA DE CULPA",
+    
+    # Laudo pericial
+    "LAUDO DE PERÍCIA CRIMINAL",
+    "CONSTATAÇÃO DE DROGAS",
+    '''Requisitante:.*''',
+    "Pessoas Envolvidas",
+    "HISTÓRICO",
+    "MATERIAL",
+    "OBJETIVO DOS EXAMES",
+    "EXAMES, RESULTADOS E CONCLUSÃO",
+    
+    # Relatório médico
+    "RELATÓRIO MÉDICO",
+    "IDENTIFICAÇÃO DO LAUDO",
+    "RESPOSTAS AOS QUESITOS",
+    "OUTRAS OBSERVAÇÕES",
+    "RELATÓRIO FINAL",
+    
+    # Registro de atendimento
+    "REGISTRO DE ATENDIMENTO INTEGRADO",
+    "DADOS DO REGISTRO",
+    "DADOS DO FATO",
+    '''TIPIFICAÇÕES:.*''',
+    '''ENDEREÇO:.*''',
+    "NARRATIVA",
+    '''RELATO (?:PM|PC):.*''',
+    "PESSOAS ENVOLVIDAS",
+    
+    # Certidão
+    "Certidão de Antecedentes Criminais",
+    '''Requerente:.*''',
+    '''Número do processo:.*''',
+    '''Motivo arquivamento:.*''',
+    '''Comarca:.*''',
+    '''Sentença:.*''',
+    
+    # Dados processuais
+    '''Classe:.*''',
+    '''Assunto:.*''',
+    '''Juízo:.*''',
+    '''Valor da causa:.*''',
+    '''Data do fato:.*''',
+    '''Data da distribuição:.*''',
+    '''Número do processo.*''',
+    '''Vara:.*''',
+    '''Distribuição:.*''',
+    '''Autuação:.*''',
+    '''Situação:.*''',
+    '''Última movimentação:.*''',
+    
+    # Seções especiais
+    "Polo Ativo",
+    "Polo Passivo",
+    "CÁLCULOS DA PENA:",
+    "INCIDENTES CONCEDIDOS",
+    "PENDÊNCIAS",
+    "PROCESSO DE EXECUÇÃO",
+    "PROCESSOS CRIMINAIS"
+]
+
+# ======================================================================
+# PADRÕES DE NARRATIVA (RAI)
+# ======================================================================
+
+[padroes_narrativa]
+description = "Preserva narrativas em documentos RAI"
+secao_narrativa = '''NARRATIVA[:\s]*\n?(.*?)(?=\n\n[A-Z\s]{10,}:|\n[A-Z\s]{5,}:|$)'''
+secao_pessoas = '''PESSOA\(?S?\)?\s*ENVOLVIDA\(?S?\)?[:\s]*\n?(.*?)(?=\n\n[A-Z\s]{10,}:|\n[A-Z\s]{5,}:|$)'''
+relato_pm = '''RELATO\s*PM[:\s]*\n?(.*?)(?=\n\n[A-Z\s]{10,}:|\n[A-Z\s]{5,}:|$)'''
+relato_pc = '''RELATO\s*PC[:\s]*\n?(.*?)(?=\n\n[A-Z\s]{10,}:|\n[A-Z\s]{5,}:|$)'''
+
+indicadores_rai = [
+    "REGISTRO DE ATENDIMENTO INTEGRADO",
+    "RAI Nº",
+    "RAI N°",
+    "DADOS DO REGISTRO",
+    "NARRATIVA:",
+    "PESSOAS ENVOLVIDAS"
+]
+
+# ======================================================================
+# CAMPOS ESTRUTURADOS
+# ======================================================================
+
+[campos_estruturados]
+description = "Detecção de campos estruturados com negrito"
+detect_bold_fields = true
+field_separator = ":"
+
+[campos_estruturados.patterns]
+basicos = [
+    "^Processo Nº:",
+    "^Juízo:",
+    "^Prioridade:",
+    "^Tipo Ação:",
+    "^Segredo de Justiça:",
+    "^Fase Processual:",
+    "^Data recebimento:",
+    "^Valor da Causa:"
+]
+
+pessoais = [
+    "^Nome:",
+    "^SEXO:",
+    "^Sexo:",
+    "^NASCIMENTO:",
+    "^IDADE:",
+    "^Idade:",
+    "^NOME DO PAI:",
+    "^NOME DA MÃE:",
+    "^NATURALIDADE:",
+    "^Nacionalidade:",
+    "^Estado civil:",
+    "^Profissão:",
+    "^RG:",
+    "^CPF:",
+    "^Data de Nascimento:",
+    "^Endereço:",
+    "^Telefone:"
+]
+
+procedurais = [
+    "^Motivo da Prisão:",
+    "^Incidência Penal:",
+    "^Local da prisão:",
+    "^TIPO DROGA:",
+    "^Data do fato:",
+    "^Data da distribuição:",
+    "^Situação:",
+    "^Fase:",
+    "^Último andamento:",
+    "^Observações:"
+]
+
+# ======================================================================
+# CONFIGURAÇÕES
+# ======================================================================
+
+[configuracoes]
+aplicar_hierarquia = true
+preservar_narrativas = true
+detectar_campos_bold = true
+normalizar_secoes = true

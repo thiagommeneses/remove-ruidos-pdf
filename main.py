@@ -1,29 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Extrator de PDF Jurídico com Remoção de Ruídos - Versão 4.2
-Sistema robusto de limpeza de metadados processuais
+Extrator de PDF Jurídico - Versão 5.0
+Sistema avançado com PyMuPDF4LLM e hierarquia de conteúdo
 """
 
 import re
 import sys
 import toml
-import PyPDF2
+import pymupdf4llm
 from pathlib import Path
 from typing import Dict, Tuple, List
 
 
 class ProcessadorPDFJuridico:
-    """Processa PDFs jurídicos removendo metadados e ruídos institucionais."""
+    """Processa PDFs jurídicos com hierarquia e limpeza avançada."""
     
-    def __init__(self, arquivo_padroes: str = "limpeza.toml"):
-        """Inicializa o processador."""
-        self.arquivo_padroes = arquivo_padroes
-        self.padroes = self._carregar_padroes(arquivo_padroes)
-        self.config = self.padroes.get("configuracoes", {})
+    def __init__(self, arquivo_limpeza: str = "limpeza.toml", 
+                 arquivo_hierarquia: str = "hierarquia.toml"):
+        """Inicializa o processador com dois arquivos de configuração."""
+        self.arquivo_limpeza = arquivo_limpeza
+        self.arquivo_hierarquia = arquivo_hierarquia
+        
+        self.padroes_limpeza = self._carregar_padroes(arquivo_limpeza)
+        self.padroes_hierarquia = self._carregar_padroes(arquivo_hierarquia)
+        
+        self.config_limpeza = self.padroes_limpeza.get("configuracoes", {})
+        self.config_hierarquia = self.padroes_hierarquia.get("configuracoes", {})
         
     def _carregar_padroes(self, arquivo: str) -> Dict:
-        """Carrega os padrões do arquivo TOML."""
+        """Carrega padrões de um arquivo TOML."""
         try:
             if not Path(arquivo).exists():
                 print(f"⚠️  Arquivo {arquivo} não encontrado!")
@@ -31,10 +37,11 @@ class ProcessadorPDFJuridico:
             
             with open(arquivo, 'r', encoding='utf-8') as f:
                 padroes = toml.load(f)
-                print(f"✅ Padrões carregados: v{padroes.get('version', 'N/A')}")
+                versao = padroes.get('version', 'N/A')
+                print(f"✅ {Path(arquivo).name} carregado: v{versao}")
                 return padroes
         except Exception as e:
-            print(f"❌ Erro ao carregar padrões: {e}")
+            print(f"❌ Erro ao carregar {arquivo}: {e}")
             return {}
     
     def extrair_metadados(self, texto: str) -> Dict:
@@ -42,10 +49,10 @@ class ProcessadorPDFJuridico:
         metadados = {}
         
         # Extrai número de movimentação
-        match_mov = re.search(r'Movimenta[cç][aã]o?\s+(\d+)\s*:\s*(\w+)', texto, re.IGNORECASE)
+        match_mov = re.search(r'Movimenta[cç][aã]o?\s+(\d+)\s*:\s*([^\n]+)', texto, re.IGNORECASE)
         if match_mov:
             metadados['movimentacao_numero'] = match_mov.group(1)
-            metadados['movimentacao_tipo'] = match_mov.group(2)
+            metadados['movimentacao_tipo'] = match_mov.group(2).strip()
         
         # Extrai número do processo
         match_proc = re.search(r'Processo:\s*([\d\.-]+)', texto)
@@ -54,63 +61,186 @@ class ProcessadorPDFJuridico:
         
         return metadados
     
-    def extrair_texto_pdf(self, arquivo_pdf: str) -> Tuple[str, List[Dict]]:
-        """Extrai o texto de um arquivo PDF e metadados."""
-        texto_completo = []
-        metadados_paginas = []
+    def extrair_texto_pymupdf(self, arquivo_pdf: str) -> Tuple[str, List[Dict]]:
+        """
+        Extrai texto usando PyMuPDF4LLM preservando estrutura.
         
+        Returns:
+            Tupla (markdown_completo, lista_metadados_por_pagina)
+        """
         try:
-            with open(arquivo_pdf, 'rb') as f:
-                leitor = PyPDF2.PdfReader(f)
-                total_paginas = len(leitor.pages)
+            print(f"📄 Extraindo com PyMuPDF4LLM...")
+            
+            # Extrai markdown de todas as páginas
+            md_texto = pymupdf4llm.to_markdown(arquivo_pdf)
+            
+            # Divide por páginas manualmente
+            import pymupdf
+            doc = pymupdf.open(arquivo_pdf)
+            total_paginas = len(doc)
+            
+            print(f"   ✓ {total_paginas} página(s) encontradas")
+            
+            metadados_paginas = []
+            paginas_md = []
+            
+            for i in range(total_paginas):
+                # Extrai markdown de cada página individualmente
+                md_pagina = pymupdf4llm.to_markdown(arquivo_pdf, pages=[i])
                 
-                print(f"📄 Extraindo texto de {total_paginas} página(s)...")
+                # Extrai metadados desta página
+                metadados = self.extrair_metadados(md_pagina)
+                metadados['pagina_arquivo'] = i + 1
+                metadados_paginas.append(metadados)
                 
-                for i, pagina in enumerate(leitor.pages, 1):
-                    texto = pagina.extract_text()
-                    if texto:
-                        # Extrai metadados desta página
-                        metadados = self.extrair_metadados(texto)
-                        metadados['pagina_arquivo'] = i
-                        metadados_paginas.append(metadados)
-                        
-                        # Adiciona marcador de página
-                        texto_completo.append(f"\n--- Página {i} ---\n")
-                        texto_completo.append(texto)
-                        print(f"   ✓ Página {i}/{total_paginas} ({len(texto)} chars)")
-                        
-                        # Mostra metadados extraídos
-                        if 'movimentacao_numero' in metadados:
-                            print(f"      → Movimentação {metadados['movimentacao_numero']}: {metadados.get('movimentacao_tipo', '')}")
+                # Adiciona marcador de página
+                paginas_md.append(f"\n--- Página {i + 1} ---\n")
+                paginas_md.append(md_pagina)
                 
-                texto_str = "".join(texto_completo)
-                return texto_str, metadados_paginas
+                print(f"   ✓ Página {i + 1}/{total_paginas} ({len(md_pagina)} chars)")
                 
+                # Mostra metadados extraídos
+                if 'movimentacao_numero' in metadados:
+                    print(f"      → Movimentação {metadados['movimentacao_numero']}: {metadados.get('movimentacao_tipo', '')}")
+            
+            doc.close()
+            texto_completo = "".join(paginas_md)
+            
+            return texto_completo, metadados_paginas
+            
         except Exception as e:
-            print(f"❌ Erro ao extrair texto: {e}")
+            print(f"❌ Erro ao extrair com PyMuPDF4LLM: {e}")
+            print("   Tentando fallback para extração simples...")
+            return self._extrair_fallback(arquivo_pdf)
+    
+    def _extrair_fallback(self, arquivo_pdf: str) -> Tuple[str, List[Dict]]:
+        """Fallback usando PyMuPDF simples."""
+        try:
+            import pymupdf
+            doc = pymupdf.open(arquivo_pdf)
+            
+            texto_completo = []
+            metadados_paginas = []
+            
+            for i, page in enumerate(doc):
+                texto = page.get_text()
+                metadados = self.extrair_metadados(texto)
+                metadados['pagina_arquivo'] = i + 1
+                metadados_paginas.append(metadados)
+                
+                texto_completo.append(f"\n--- Página {i + 1} ---\n")
+                texto_completo.append(texto)
+            
+            doc.close()
+            return "".join(texto_completo), metadados_paginas
+            
+        except Exception as e:
+            print(f"❌ Erro no fallback: {e}")
             return "", []
     
-    def adicionar_quebras_linha(self, texto: str) -> str:
-        """Adiciona quebras de linha estratégicas."""
-        texto = re.sub(r'([a-z\)])([A-Z]{3,})', r'\1\n\2', texto)
-        texto = re.sub(r'([^\n])(Usuário:)', r'\1\n\2', texto)
-        texto = re.sub(r'([^\n])(Processo:)', r'\1\n\2', texto)
-        texto = re.sub(r'([^\n])(Tribunal\s+de)', r'\1\n\2', texto)
-        texto = re.sub(r'([^\n])(Documento\s+Assinado)', r'\1\n\2', texto)
-        texto = re.sub(r'([^\n])(PROCESSO\s+CRIMINAL)', r'\1\n\2', texto)
-        texto = re.sub(r'([^\n])(https?://)', r'\1\n\2', texto)
-        texto = re.sub(r'(\d{2}:\d{2}:\d{2})([A-Z])', r'\1\n\2', texto)
+    def aplicar_hierarquia(self, texto: str) -> str:
+        """Aplica hierarquia de cabeçalhos ao texto."""
+        if not self.config_hierarquia.get("aplicar_hierarquia", True):
+            return texto
+        
+        print("📐 Aplicando hierarquia de cabeçalhos...")
+        
+        # Processa H1
+        h1_patterns = self.padroes_hierarquia.get("header_config", {}).get("h1", {}).get("patterns", [])
+        for pattern in h1_patterns:
+            texto = re.sub(
+                f"^{re.escape(pattern)}$",
+                f"# {pattern}",
+                texto,
+                flags=re.MULTILINE
+            )
+        
+        # Processa H2
+        h2_patterns = self.padroes_hierarquia.get("header_config", {}).get("h2", {}).get("patterns", [])
+        for pattern in h2_patterns:
+            # Se começa com ^, é regex
+            if pattern.startswith("^"):
+                texto = re.sub(
+                    pattern + "$",
+                    lambda m: f"## {m.group(0)}",
+                    texto,
+                    flags=re.MULTILINE
+                )
+            else:
+                texto = re.sub(
+                    f"^{re.escape(pattern)}$",
+                    f"## {pattern}",
+                    texto,
+                    flags=re.MULTILINE
+                )
+        
+        # Processa H3
+        h3_patterns = self.padroes_hierarquia.get("header_config", {}).get("h3", {}).get("patterns", [])
+        for pattern in h3_patterns:
+            if pattern.startswith("^"):
+                texto = re.sub(
+                    pattern + "$",
+                    lambda m: f"### {m.group(0)}",
+                    texto,
+                    flags=re.MULTILINE
+                )
+            else:
+                texto = re.sub(
+                    f"^{re.escape(pattern)}$",
+                    f"### {pattern}",
+                    texto,
+                    flags=re.MULTILINE
+                )
+        
+        print("   ✓ Hierarquia aplicada")
+        return texto
+    
+    def preservar_conteudo_importante(self, texto: str) -> Tuple[str, List[str]]:
+        """
+        Marca conteúdo importante para preservação durante a limpeza.
+        
+        Returns:
+            Tupla (texto_com_marcadores, lista_de_conteudos_preservados)
+        """
+        padroes_preservar = self.padroes_hierarquia.get("padroes_preservar", {}).get("patterns", [])
+        
+        if not padroes_preservar:
+            return texto, []
+        
+        print("🔒 Protegendo conteúdo importante...")
+        
+        conteudos_preservados = []
+        
+        for i, padrao in enumerate(padroes_preservar):
+            try:
+                matches = re.findall(padrao, texto, flags=re.MULTILINE | re.IGNORECASE)
+                if matches:
+                    for match in matches:
+                        placeholder = f"___PRESERVADO_{i}_{len(conteudos_preservados)}___"
+                        conteudos_preservados.append(str(match))
+                        texto = texto.replace(str(match), placeholder, 1)
+            except:
+                pass
+        
+        print(f"   ✓ {len(conteudos_preservados)} blocos protegidos")
+        return texto, conteudos_preservados
+    
+    def restaurar_conteudo_preservado(self, texto: str, conteudos: List[str]) -> str:
+        """Restaura conteúdo que foi preservado."""
+        for i, conteudo in enumerate(conteudos):
+            for j in range(len(conteudos)):
+                placeholder = f"___PRESERVADO_{i}_{j}___"
+                if placeholder in texto:
+                    texto = texto.replace(placeholder, conteudo, 1)
+                    break
         
         return texto
     
     def separar_por_paginas(self, texto: str) -> List[Tuple[int, str]]:
         """Separa o texto em páginas individuais."""
         paginas = []
-        
-        # Divide pelo marcador de página
         partes = re.split(r'---\s*Página\s+(\d+)\s*---\s*\n?', texto)
         
-        # partes[0] é vazio, partes[1]=num, partes[2]=conteudo, ...
         i = 1
         while i < len(partes):
             if i + 1 < len(partes):
@@ -127,7 +257,7 @@ class ProcessadorPDFJuridico:
     
     def remover_padroes_secao(self, texto: str, secao: str) -> Tuple[str, int]:
         """Remove padrões de uma seção específica."""
-        padroes = self.padroes.get(secao, {}).get("patterns", [])
+        padroes = self.padroes_limpeza.get(secao, {}).get("patterns", [])
         
         if not padroes:
             return texto, 0
@@ -141,17 +271,19 @@ class ProcessadorPDFJuridico:
                     removidos += len(matches)
                 
                 texto = re.sub(padrao, "", texto, flags=re.MULTILINE | re.IGNORECASE)
-            except Exception as e:
+            except:
                 pass
         
         return texto, removidos
     
     def remover_ruidos(self, texto: str) -> str:
         """Remove todos os padrões de ruído."""
-        ordem = self.config.get("ordem_processamento", [
+        ordem = self.config_limpeza.get("ordem_processamento", [
             "metadados_processuais",
             "assinaturas_digitais",
             "cabecalhos_institucionais",
+            "textos_margem_rotacionados",
+            "rodape_institucional",
             "rodape_links",
             "paginacao",
             "separadores"
@@ -163,7 +295,7 @@ class ProcessadorPDFJuridico:
         return texto
     
     def limpar_fragmentos_finais(self, texto: str) -> str:
-        """Remove fragmentos residuais linha por linha."""
+        """Remove fragmentos residuais."""
         linhas_limpas = []
         
         for linha in texto.split('\n'):
@@ -190,10 +322,10 @@ class ProcessadorPDFJuridico:
     def normalizar_espacos(self, texto: str) -> str:
         """Normaliza espaçamento."""
         texto = re.sub(r' {2,}', ' ', texto)
-        linhas = [linha.strip() for linha in texto.split('\n')]
+        linhas = [linha.rstrip() for linha in texto.split('\n')]
         
         # Remove linhas vazias excessivas
-        max_vazias = self.config.get("max_linhas_vazias_consecutivas", 1)
+        max_vazias = self.config_limpeza.get("max_linhas_vazias_consecutivas", 1)
         linhas_filtradas = []
         vazias = 0
         
@@ -207,17 +339,18 @@ class ProcessadorPDFJuridico:
                     linhas_filtradas.append(linha)
         
         # Remove linhas muito curtas
-        min_tam = self.config.get("min_tamanho_linha_util", 2)
+        min_tam = self.config_limpeza.get("min_tamanho_linha_util", 2)
         linhas_finais = []
         
         for linha in linhas_filtradas:
             if len(linha.strip()) >= min_tam or linha.strip() == '':
-                if re.search(r'[a-zA-ZÀ-ÿ]', linha) or linha.strip() == '':
+                if re.search(r'[a-zA-ZÀ-ÿ#*-]', linha) or linha.strip() == '':
                     linhas_finais.append(linha)
         
         return '\n'.join(linhas_finais).strip()
     
-    def montar_documento_final(self, paginas_limpas: List[Tuple[int, str]], metadados_paginas: List[Dict]) -> str:
+    def montar_documento_final(self, paginas_limpas: List[Tuple[int, str]], 
+                              metadados_paginas: List[Dict]) -> str:
         """Monta o documento final com cabeçalhos de página."""
         partes = []
         total_paginas = len(paginas_limpas)
@@ -232,7 +365,6 @@ class ProcessadorPDFJuridico:
             
             # Adiciona cabeçalho apenas se houver mais de 1 página
             if total_paginas > 1:
-                # Monta informação de movimentação (só se existir)
                 movimentacao = ""
                 if metadados and 'movimentacao_numero' in metadados:
                     mov_num = metadados['movimentacao_numero']
@@ -241,7 +373,6 @@ class ProcessadorPDFJuridico:
                     if mov_tipo:
                         movimentacao += f" ({mov_tipo})"
                 
-                # Adiciona separador antes (exceto na primeira página)
                 if idx > 0:
                     partes.append("")
                 
@@ -250,7 +381,6 @@ class ProcessadorPDFJuridico:
                 partes.append(f"{'='*60}")
                 partes.append("")
             
-            # Adiciona o conteúdo
             partes.append(conteudo)
         
         return '\n'.join(partes).strip()
@@ -258,32 +388,32 @@ class ProcessadorPDFJuridico:
     def processar(self, arquivo_pdf: str, arquivo_txt: str, arquivo_md: str) -> Tuple[str, str]:
         """Processa o PDF completo."""
         print("\n" + "="*70)
-        print("🔍 PROCESSAMENTO DE PDF JURÍDICO v4.2")
+        print("🔍 PROCESSAMENTO DE PDF JURÍDICO v5.0 - PyMuPDF4LLM")
         print("="*70)
         
-        if not self.padroes:
-            print("❌ Nenhum padrão de limpeza carregado!")
+        if not self.padroes_limpeza:
+            print("❌ Padrões de limpeza não carregados!")
             return "", ""
         
-        # Etapa 1: Extração
+        # Etapa 1: Extração com PyMuPDF4LLM
         print("\n" + "="*70)
-        print("📖 ETAPA 1: Extração")
+        print("📖 ETAPA 1: Extração com PyMuPDF4LLM")
         print("="*70)
-        texto_bruto, metadados_paginas = self.extrair_texto_pdf(arquivo_pdf)
+        texto_bruto, metadados_paginas = self.extrair_texto_pymupdf(arquivo_pdf)
         
         if not texto_bruto:
             return "", ""
         
+        # Salva texto bruto
         with open(arquivo_txt, 'w', encoding='utf-8') as f:
             f.write(texto_bruto)
         print(f"\n💾 Salvo: {arquivo_txt} ({len(texto_bruto):,} chars)")
         
-        # Etapa 2: Quebras de linha
+        # Etapa 2: Aplicar hierarquia
         print("\n" + "="*70)
-        print("🔧 ETAPA 2: Normalização de quebras")
+        print("📐 ETAPA 2: Aplicação de Hierarquia")
         print("="*70)
-        texto = self.adicionar_quebras_linha(texto_bruto)
-        print("   ✓ Quebras de linha adicionadas")
+        texto = self.aplicar_hierarquia(texto_bruto)
         
         # Determina se deve preservar primeira página
         total_paginas = len(metadados_paginas)
@@ -306,36 +436,44 @@ class ProcessadorPDFJuridico:
         
         # Etapa 4: Limpar cada página
         print("\n" + "="*70)
-        print("🧹 ETAPA 4: Remoção de metadados por página")
+        print("🧹 ETAPA 4: Limpeza por página")
         print("="*70)
         
         paginas_limpas = []
         for num_pag, conteudo_pag in paginas_texto:
-            print(f"\n   📄 Processando página {num_pag}...")
+            print(f"\n   Processando página {num_pag}...")
             
             if preservar_capa and num_pag == 1:
-                print("      ⚠️  Página preservada (capa do processo)")
+                print("      Página preservada (capa do processo)")
                 conteudo_limpo = conteudo_pag
             else:
-                conteudo_limpo = self.remover_ruidos(conteudo_pag)
+                # Preserva conteúdo importante
+                conteudo_protegido, preservados = self.preservar_conteudo_importante(conteudo_pag)
+                
+                # Remove ruídos
+                conteudo_limpo = self.remover_ruidos(conteudo_protegido)
                 conteudo_limpo = self.limpar_fragmentos_finais(conteudo_limpo)
+                
+                # Restaura conteúdo preservado
+                conteudo_limpo = self.restaurar_conteudo_preservado(conteudo_limpo, preservados)
             
+            # Normaliza
             conteudo_final = self.normalizar_espacos(conteudo_limpo)
             
             # Sempre adiciona a página, mesmo se vazia
             if conteudo_final:
                 paginas_limpas.append((num_pag, conteudo_final))
-                print(f"      ✓ {len(conteudo_final)} chars finais")
+                print(f"      {len(conteudo_final)} chars finais")
             else:
                 paginas_limpas.append((num_pag, "*Página sem conteúdo após limpeza*"))
-                print(f"      ⚠️  Página vazia após limpeza")
+                print(f"      Página vazia após limpeza")
         
         # Etapa 5: Montar documento
         print("\n" + "="*70)
         print("📄 ETAPA 5: Montagem do documento")
         print("="*70)
         texto_final = self.montar_documento_final(paginas_limpas, metadados_paginas)
-        print(f"   ✓ Documento montado com {len(paginas_limpas)} página(s)")
+        print(f"   Documento montado com {len(paginas_limpas)} página(s)")
         
         # Estatísticas
         print("\n" + "="*70)
@@ -347,11 +485,11 @@ class ProcessadorPDFJuridico:
         reducao = len(texto_bruto) - len(texto_final)
         percentual = (reducao / len(texto_bruto) * 100) if texto_bruto else 0
         
-        print(f"   • Original: {len(texto_bruto):,} chars")
-        print(f"   • Removido: {reducao:,} chars ({percentual:.1f}%)")
-        print(f"   • Final: {len(texto_final):,} chars")
-        print(f"   • Linhas: {linhas}")
-        print(f"   • Palavras: {palavras}")
+        print(f"   Original: {len(texto_bruto):,} chars")
+        print(f"   Removido: {reducao:,} chars ({percentual:.1f}%)")
+        print(f"   Final: {len(texto_final):,} chars")
+        print(f"   Linhas: {linhas}")
+        print(f"   Palavras: {palavras}")
         
         # Salva resultado
         with open(arquivo_md, 'w', encoding='utf-8') as f:
@@ -399,7 +537,7 @@ def main():
     print(f"📄 Saída 2: {arquivo_md}")
     
     # Processa
-    processador = ProcessadorPDFJuridico("limpeza.toml")
+    processador = ProcessadorPDFJuridico("limpeza.toml", "hierarquia.toml")
     texto_bruto, texto_limpo = processador.processar(
         arquivo_pdf=arquivo_pdf,
         arquivo_txt=str(arquivo_txt),

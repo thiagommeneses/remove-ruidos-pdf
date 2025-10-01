@@ -122,5 +122,5 @@ ordem_processamento = [
 normalizar_espacos = true
 remover_linhas_vazias_excessivas = true
 aplicar_correcao_caracteres = false
-max_linhas_vazias_consecutivas = 1
+max_linhas_vazias_consecutivas = 0
 min_tamanho_linha_util = 2

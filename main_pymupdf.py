@@ -1,132 +1,116 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Extrator de PDF Jurídico - Versão 5.0
-Sistema avançado com PyMuPDF4LLM e hierarquia de conteúdo
+Extrator de PDF Jurídico com Remoção de Ruídos - Versão 4.2
+Sistema robusto de limpeza de metadados processuais
 """
 
 import re
 import sys
 import toml
-import pymupdf4llm
+import PyPDF2
 from pathlib import Path
 from typing import Dict, Tuple, List
 
 
 class ProcessadorPDFJuridico:
-    """Processa PDFs jurídicos com hierarquia e limpeza avançada."""
+    """Processa PDFs jurídicos removendo metadados e ruídos institucionais."""
     
-    def __init__(self, arquivo_limpeza: str = "limpeza.toml", 
-                 arquivo_hierarquia: str = "hierarquia.toml"):
-        """Inicializa o processador com dois arquivos de configuração."""
-        self.arquivo_limpeza = arquivo_limpeza
-        self.arquivo_hierarquia = arquivo_hierarquia
-        
-        self.padroes_limpeza = self._carregar_padroes(arquivo_limpeza)
-        self.padroes_hierarquia = self._carregar_padroes(arquivo_hierarquia)
-        
-        self.config_limpeza = self.padroes_limpeza.get("configuracoes", {})
-        self.config_hierarquia = self.padroes_hierarquia.get("configuracoes", {})
+    def __init__(self, arquivo_padroes: str = "limpeza.toml"):
+        """Inicializa o processador."""
+        self.arquivo_padroes = arquivo_padroes
+        self.padroes = self._carregar_padroes(arquivo_padroes)
+        self.config = self.padroes.get("configuracoes", {})
         
     def _carregar_padroes(self, arquivo: str) -> Dict:
-        """Carrega padrões de um arquivo TOML."""
+        """Carrega os padrões do arquivo TOML."""
         try:
             if not Path(arquivo).exists():
-                print(f"Arquivo {arquivo} não encontrado!")
+                print(f"⚠️  Arquivo {arquivo} não encontrado!")
                 return {}
             
             with open(arquivo, 'r', encoding='utf-8') as f:
                 padroes = toml.load(f)
-                versao = padroes.get('version', 'N/A')
-                print(f"✓ {Path(arquivo).name} carregado: v{versao}")
+                print(f"✅ Padrões carregados: v{padroes.get('version', 'N/A')}")
                 return padroes
         except Exception as e:
-            print(f"Erro ao carregar {arquivo}: {e}")
+            print(f"❌ Erro ao carregar padrões: {e}")
             return {}
     
     def extrair_metadados(self, texto: str) -> Dict:
         """Extrai metadados importantes antes de removê-los."""
         metadados = {}
         
-        match_mov = re.search(r'Movimenta[cç][aã]o?\s+(\d+)\s*:\s*([^\n]+)', texto, re.IGNORECASE)
+        # Extrai número de movimentação
+        match_mov = re.search(r'Movimenta[cç][aã]o?\s+(\d+)\s*:\s*(\w+)', texto, re.IGNORECASE)
         if match_mov:
             metadados['movimentacao_numero'] = match_mov.group(1)
-            metadados['movimentacao_tipo'] = match_mov.group(2).strip()
+            metadados['movimentacao_tipo'] = match_mov.group(2)
         
+        # Extrai número do processo
         match_proc = re.search(r'Processo:\s*([\d\.-]+)', texto)
         if match_proc:
             metadados['processo'] = match_proc.group(1)
         
         return metadados
     
-    def extrair_texto_pymupdf(self, arquivo_pdf: str) -> Tuple[str, List[Dict]]:
-        """Extrai texto usando PyMuPDF4LLM preservando estrutura."""
+    def extrair_texto_pdf(self, arquivo_pdf: str) -> Tuple[str, List[Dict]]:
+        """Extrai o texto de um arquivo PDF e metadados."""
+        texto_completo = []
+        metadados_paginas = []
+        
         try:
-            print(f"Extraindo com PyMuPDF4LLM...")
-            
-            import pymupdf
-            doc = pymupdf.open(arquivo_pdf)
-            total_paginas = len(doc)
-            
-            print(f"   {total_paginas} página(s) encontradas")
-            
-            metadados_paginas = []
-            paginas_md = []
-            
-            for i in range(total_paginas):
-                md_pagina = pymupdf4llm.to_markdown(arquivo_pdf, pages=[i])
+            with open(arquivo_pdf, 'rb') as f:
+                leitor = PyPDF2.PdfReader(f)
+                total_paginas = len(leitor.pages)
                 
-                metadados = self.extrair_metadados(md_pagina)
-                metadados['pagina_arquivo'] = i + 1
-                metadados_paginas.append(metadados)
+                print(f"📄 Extraindo texto de {total_paginas} página(s)...")
                 
-                paginas_md.append(f"\n--- Página {i + 1} ---\n")
-                paginas_md.append(md_pagina)
+                for i, pagina in enumerate(leitor.pages, 1):
+                    texto = pagina.extract_text()
+                    if texto:
+                        # Extrai metadados desta página
+                        metadados = self.extrair_metadados(texto)
+                        metadados['pagina_arquivo'] = i
+                        metadados_paginas.append(metadados)
+                        
+                        # Adiciona marcador de página
+                        texto_completo.append(f"\n--- Página {i} ---\n")
+                        texto_completo.append(texto)
+                        print(f"   ✓ Página {i}/{total_paginas} ({len(texto)} chars)")
+                        
+                        # Mostra metadados extraídos
+                        if 'movimentacao_numero' in metadados:
+                            print(f"      → Movimentação {metadados['movimentacao_numero']}: {metadados.get('movimentacao_tipo', '')}")
                 
-                print(f"   Página {i + 1}/{total_paginas} ({len(md_pagina)} chars)")
+                texto_str = "".join(texto_completo)
+                return texto_str, metadados_paginas
                 
-                if 'movimentacao_numero' in metadados:
-                    print(f"      → Movimentação {metadados['movimentacao_numero']}: {metadados.get('movimentacao_tipo', '')}")
-            
-            doc.close()
-            texto_completo = "".join(paginas_md)
-            
-            return texto_completo, metadados_paginas
-            
         except Exception as e:
-            print(f"Erro ao extrair com PyMuPDF4LLM: {e}")
-            return self._extrair_fallback(arquivo_pdf)
-    
-    def _extrair_fallback(self, arquivo_pdf: str) -> Tuple[str, List[Dict]]:
-        """Fallback usando PyMuPDF simples."""
-        try:
-            import pymupdf
-            doc = pymupdf.open(arquivo_pdf)
-            
-            texto_completo = []
-            metadados_paginas = []
-            
-            for i, page in enumerate(doc):
-                texto = page.get_text()
-                metadados = self.extrair_metadados(texto)
-                metadados['pagina_arquivo'] = i + 1
-                metadados_paginas.append(metadados)
-                
-                texto_completo.append(f"\n--- Página {i + 1} ---\n")
-                texto_completo.append(texto)
-            
-            doc.close()
-            return "".join(texto_completo), metadados_paginas
-            
-        except Exception as e:
-            print(f"Erro no fallback: {e}")
+            print(f"❌ Erro ao extrair texto: {e}")
             return "", []
+    
+    def adicionar_quebras_linha(self, texto: str) -> str:
+        """Adiciona quebras de linha estratégicas."""
+        texto = re.sub(r'([a-z\)])([A-Z]{3,})', r'\1\n\2', texto)
+        texto = re.sub(r'([^\n])(Usuário:)', r'\1\n\2', texto)
+        texto = re.sub(r'([^\n])(Processo:)', r'\1\n\2', texto)
+        texto = re.sub(r'([^\n])(Tribunal\s+de)', r'\1\n\2', texto)
+        texto = re.sub(r'([^\n])(Documento\s+Assinado)', r'\1\n\2', texto)
+        texto = re.sub(r'([^\n])(PROCESSO\s+CRIMINAL)', r'\1\n\2', texto)
+        texto = re.sub(r'([^\n])(https?://)', r'\1\n\2', texto)
+        texto = re.sub(r'(\d{2}:\d{2}:\d{2})([A-Z])', r'\1\n\2', texto)
+        
+        return texto
     
     def separar_por_paginas(self, texto: str) -> List[Tuple[int, str]]:
         """Separa o texto em páginas individuais."""
         paginas = []
+        
+        # Divide pelo marcador de página
         partes = re.split(r'---\s*Página\s+(\d+)\s*---\s*\n?', texto)
         
+        # partes[0] é vazio, partes[1]=num, partes[2]=conteudo, ...
         i = 1
         while i < len(partes):
             if i + 1 < len(partes):
@@ -143,7 +127,7 @@ class ProcessadorPDFJuridico:
     
     def remover_padroes_secao(self, texto: str, secao: str) -> Tuple[str, int]:
         """Remove padrões de uma seção específica."""
-        padroes = self.padroes_limpeza.get(secao, {}).get("patterns", [])
+        padroes = self.padroes.get(secao, {}).get("patterns", [])
         
         if not padroes:
             return texto, 0
@@ -157,31 +141,29 @@ class ProcessadorPDFJuridico:
                     removidos += len(matches)
                 
                 texto = re.sub(padrao, "", texto, flags=re.MULTILINE | re.IGNORECASE)
-            except:
+            except Exception as e:
                 pass
         
         return texto, removidos
     
     def remover_ruidos(self, texto: str) -> str:
         """Remove todos os padrões de ruído."""
-        ordem = self.config_limpeza.get("ordem_processamento", [
+        ordem = self.config.get("ordem_processamento", [
             "metadados_processuais",
             "assinaturas_digitais",
             "cabecalhos_institucionais",
-            "textos_margem_rotacionados",
-            "rodape_institucional",
             "rodape_links",
             "paginacao",
             "separadores"
         ])
         
         for secao in ordem:
-            texto, _ = self.remover_padroes_secao(texto, secao)
+            texto, removidos = self.remover_padroes_secao(texto, secao)
         
         return texto
     
     def limpar_fragmentos_finais(self, texto: str) -> str:
-        """Remove fragmentos residuais."""
+        """Remove fragmentos residuais linha por linha."""
         linhas_limpas = []
         
         for linha in texto.split('\n'):
@@ -191,6 +173,7 @@ class ProcessadorPDFJuridico:
                 linhas_limpas.append(linha)
                 continue
             
+            # Remove linhas problemáticas
             if re.search(r'\d{15,}', linha_strip):
                 continue
             if re.match(r'^\s*:\s*\d{5,}', linha_strip):
@@ -205,28 +188,12 @@ class ProcessadorPDFJuridico:
         return '\n'.join(linhas_limpas)
     
     def normalizar_espacos(self, texto: str) -> str:
-        """Normaliza espaçamento e remove artefatos de markdown."""
+        """Normaliza espaçamento."""
         texto = re.sub(r' {2,}', ' ', texto)
-        
-        linhas = []
-        for linha in texto.split('\n'):
-            linha_strip = linha.strip()
-            
-            # Remove linhas só com asteriscos
-            asterisco_pattern = r'^\*+$'
-            if re.match(asterisco_pattern, linha_strip):
-                continue
-            
-            # Remove linhas com asteriscos e espaços
-            if len(linha_strip) < 50:
-                asterisco_espaco_pattern = r'^[\s\*]+$'
-                if re.match(asterisco_espaco_pattern, linha_strip):
-                    continue
-            
-            linhas.append(linha.rstrip())
+        linhas = [linha.strip() for linha in texto.split('\n')]
         
         # Remove linhas vazias excessivas
-        max_vazias = self.config_limpeza.get("max_linhas_vazias_consecutivas", 1)
+        max_vazias = self.config.get("max_linhas_vazias_consecutivas", 1)
         linhas_filtradas = []
         vazias = 0
         
@@ -240,40 +207,32 @@ class ProcessadorPDFJuridico:
                     linhas_filtradas.append(linha)
         
         # Remove linhas muito curtas
-        min_tam = self.config_limpeza.get("min_tamanho_linha_util", 2)
+        min_tam = self.config.get("min_tamanho_linha_util", 2)
         linhas_finais = []
         
         for linha in linhas_filtradas:
-            if linha.strip() == '':
-                linhas_finais.append(linha)
-                continue
-            
-            # Preserva markdown
-            markdown_pattern = r'^#{1,4}\s+\w'
-            if re.match(markdown_pattern, linha):
-                linhas_finais.append(linha)
-                continue
-            
-            if len(linha.strip()) >= min_tam:
-                if re.search(r'[a-zA-ZÀ-ÿ0-9]', linha):
+            if len(linha.strip()) >= min_tam or linha.strip() == '':
+                if re.search(r'[a-zA-ZÀ-ÿ]', linha) or linha.strip() == '':
                     linhas_finais.append(linha)
         
         return '\n'.join(linhas_finais).strip()
     
-    def montar_documento_final(self, paginas_limpas: List[Tuple[int, str]], 
-                              metadados_paginas: List[Dict]) -> str:
+    def montar_documento_final(self, paginas_limpas: List[Tuple[int, str]], metadados_paginas: List[Dict]) -> str:
         """Monta o documento final com cabeçalhos de página."""
         partes = []
         total_paginas = len(paginas_limpas)
         
         for idx, (numero_pagina, conteudo) in enumerate(paginas_limpas):
+            # Busca metadados desta página
             metadados = None
             for meta in metadados_paginas:
                 if meta.get('pagina_arquivo') == numero_pagina:
                     metadados = meta
                     break
             
+            # Adiciona cabeçalho apenas se houver mais de 1 página
             if total_paginas > 1:
+                # Monta informação de movimentação (só se existir)
                 movimentacao = ""
                 if metadados and 'movimentacao_numero' in metadados:
                     mov_num = metadados['movimentacao_numero']
@@ -282,6 +241,7 @@ class ProcessadorPDFJuridico:
                     if mov_tipo:
                         movimentacao += f" ({mov_tipo})"
                 
+                # Adiciona separador antes (exceto na primeira página)
                 if idx > 0:
                     partes.append("")
                 
@@ -290,6 +250,7 @@ class ProcessadorPDFJuridico:
                 partes.append(f"{'='*60}")
                 partes.append("")
             
+            # Adiciona o conteúdo
             partes.append(conteudo)
         
         return '\n'.join(partes).strip()
@@ -297,53 +258,63 @@ class ProcessadorPDFJuridico:
     def processar(self, arquivo_pdf: str, arquivo_txt: str, arquivo_md: str) -> Tuple[str, str]:
         """Processa o PDF completo."""
         print("\n" + "="*70)
-        print("PROCESSAMENTO DE PDF JURÍDICO v5.0")
+        print("🔍 PROCESSAMENTO DE PDF JURÍDICO v4.2")
         print("="*70)
         
-        if not self.padroes_limpeza:
-            print("Padrões de limpeza não carregados!")
+        if not self.padroes:
+            print("❌ Nenhum padrão de limpeza carregado!")
             return "", ""
         
-        # Etapa 1
+        # Etapa 1: Extração
         print("\n" + "="*70)
-        print("ETAPA 1: Extração")
+        print("📖 ETAPA 1: Extração")
         print("="*70)
-        texto_bruto, metadados_paginas = self.extrair_texto_pymupdf(arquivo_pdf)
+        texto_bruto, metadados_paginas = self.extrair_texto_pdf(arquivo_pdf)
         
         if not texto_bruto:
             return "", ""
         
         with open(arquivo_txt, 'w', encoding='utf-8') as f:
             f.write(texto_bruto)
-        print(f"\nSalvo: {arquivo_txt} ({len(texto_bruto):,} chars)")
+        print(f"\n💾 Salvo: {arquivo_txt} ({len(texto_bruto):,} chars)")
         
-        # Etapa 2
+        # Etapa 2: Quebras de linha
+        print("\n" + "="*70)
+        print("🔧 ETAPA 2: Normalização de quebras")
+        print("="*70)
+        texto = self.adicionar_quebras_linha(texto_bruto)
+        print("   ✓ Quebras de linha adicionadas")
+        
+        # Determina se deve preservar primeira página
         total_paginas = len(metadados_paginas)
         preservar_capa = total_paginas > 1
         
         if preservar_capa:
-            print(f"\nDocumento com {total_paginas} páginas")
-            print("A primeira página (capa) será preservada")
+            print(f"\n   📋 Documento com {total_paginas} páginas")
+            print("   ℹ️  A primeira página (capa) será preservada intacta")
         
-        # Etapa 3
+        # Etapa 3: Separar páginas ANTES de limpar
         print("\n" + "="*70)
-        print("ETAPA 2: Separação por páginas")
+        print("📑 ETAPA 3: Separação por páginas")
         print("="*70)
         
-        paginas_texto = self.separar_por_paginas(texto_bruto)
-        print(f"   {len(paginas_texto)} página(s) separada(s)")
+        marcadores = re.findall(r'---\s*Página\s+\d+\s*---', texto)
+        print(f"   🔍 Marcadores encontrados: {len(marcadores)}")
         
-        # Etapa 4
+        paginas_texto = self.separar_por_paginas(texto)
+        print(f"   ✓ {len(paginas_texto)} página(s) separada(s)")
+        
+        # Etapa 4: Limpar cada página
         print("\n" + "="*70)
-        print("ETAPA 3: Limpeza por página")
+        print("🧹 ETAPA 4: Remoção de metadados por página")
         print("="*70)
         
         paginas_limpas = []
         for num_pag, conteudo_pag in paginas_texto:
-            print(f"\n   Processando página {num_pag}...")
+            print(f"\n   📄 Processando página {num_pag}...")
             
             if preservar_capa and num_pag == 1:
-                print("      Página preservada (capa)")
+                print("      ⚠️  Página preservada (capa do processo)")
                 conteudo_limpo = conteudo_pag
             else:
                 conteudo_limpo = self.remover_ruidos(conteudo_pag)
@@ -351,47 +322,51 @@ class ProcessadorPDFJuridico:
             
             conteudo_final = self.normalizar_espacos(conteudo_limpo)
             
-            # Verifica conteúdo
-            linhas_uteis = [l for l in conteudo_final.split('\n') 
-                           if l.strip() and not re.match(r'^[\*\s]+$', l.strip())]
-            
-            if len(linhas_uteis) > 2:
+            # Sempre adiciona a página, mesmo se vazia
+            if conteudo_final:
                 paginas_limpas.append((num_pag, conteudo_final))
-                print(f"      {len(conteudo_final)} chars ({len(linhas_uteis)} linhas)")
-            elif len(linhas_uteis) > 0:
-                paginas_limpas.append((num_pag, conteudo_final))
-                print(f"      Pouco conteúdo ({len(linhas_uteis)} linhas)")
+                print(f"      ✓ {len(conteudo_final)} chars finais")
             else:
-                paginas_limpas.append((num_pag, "*Página sem conteúdo útil*"))
-                print(f"      Página vazia")
+                paginas_limpas.append((num_pag, "*Página sem conteúdo após limpeza*"))
+                print(f"      ⚠️  Página vazia após limpeza")
         
-        # Etapa 5
+        # Etapa 5: Montar documento
         print("\n" + "="*70)
-        print("ETAPA 4: Montagem")
+        print("📄 ETAPA 5: Montagem do documento")
         print("="*70)
         texto_final = self.montar_documento_final(paginas_limpas, metadados_paginas)
-        print(f"   Documento com {len(paginas_limpas)} página(s)")
+        print(f"   ✓ Documento montado com {len(paginas_limpas)} página(s)")
         
         # Estatísticas
         print("\n" + "="*70)
-        print("ESTATÍSTICAS")
+        print("📊 ESTATÍSTICAS")
         print("="*70)
         
         palavras = len(texto_final.split())
+        linhas = len([l for l in texto_final.split('\n') if l.strip()])
         reducao = len(texto_bruto) - len(texto_final)
         percentual = (reducao / len(texto_bruto) * 100) if texto_bruto else 0
         
-        print(f"   Original: {len(texto_bruto):,} chars")
-        print(f"   Removido: {reducao:,} chars ({percentual:.1f}%)")
-        print(f"   Final: {len(texto_final):,} chars")
-        print(f"   Palavras: {palavras}")
+        print(f"   • Original: {len(texto_bruto):,} chars")
+        print(f"   • Removido: {reducao:,} chars ({percentual:.1f}%)")
+        print(f"   • Final: {len(texto_final):,} chars")
+        print(f"   • Linhas: {linhas}")
+        print(f"   • Palavras: {palavras}")
         
+        # Salva resultado
         with open(arquivo_md, 'w', encoding='utf-8') as f:
-            f.write(texto_final if texto_final else "*Documento vazio*\n")
+            if texto_final:
+                f.write(texto_final)
+            else:
+                f.write("*Documento sem conteúdo útil.*\n")
         
-        print(f"\nSalvo: {arquivo_md}")
+        print(f"\n💾 Salvo: {arquivo_md}")
+        
         print("\n" + "="*70)
-        print("CONCLUÍDO!")
+        if palavras > 0:
+            print("✅ PROCESSAMENTO CONCLUÍDO!")
+        else:
+            print("⚠️  DOCUMENTO SEM CONTEÚDO ÚTIL")
         print("="*70 + "\n")
         
         return texto_bruto, texto_final
@@ -400,15 +375,18 @@ class ProcessadorPDFJuridico:
 def main():
     """Função principal."""
     if len(sys.argv) < 2:
-        print("Uso: python main.py <arquivo.pdf>")
+        print("❌ Uso incorreto!")
+        print(f"💡 Uso: python {sys.argv[0]} <arquivo.pdf>")
+        print(f"   Exemplo: python {sys.argv[0]} IP1.pdf")
         return
     
     arquivo_pdf = sys.argv[1]
     
     if not Path(arquivo_pdf).exists():
-        print(f"Arquivo não encontrado: {arquivo_pdf}")
+        print(f"❌ Arquivo não encontrado: {arquivo_pdf}")
         return
     
+    # Gera nomes de saída
     caminho = Path(arquivo_pdf)
     nome_base = caminho.stem
     diretorio = caminho.parent
@@ -416,16 +394,20 @@ def main():
     arquivo_txt = diretorio / f"{nome_base}_texto-extraido.txt"
     arquivo_md = diretorio / f"{nome_base}_texto-limpo.md"
     
-    print(f"Entrada: {arquivo_pdf}")
-    print(f"Saída 1: {arquivo_txt}")
-    print(f"Saída 2: {arquivo_md}")
+    print(f"📁 Entrada: {arquivo_pdf}")
+    print(f"📄 Saída 1: {arquivo_txt}")
+    print(f"📄 Saída 2: {arquivo_md}")
     
-    processador = ProcessadorPDFJuridico("limpeza.toml", "hierarquia.toml")
-    processador.processar(
+    # Processa
+    processador = ProcessadorPDFJuridico("limpeza.toml")
+    texto_bruto, texto_limpo = processador.processar(
         arquivo_pdf=arquivo_pdf,
         arquivo_txt=str(arquivo_txt),
         arquivo_md=str(arquivo_md)
     )
+    
+    if texto_limpo:
+        print(f"✅ {len(texto_limpo.split())} palavras no documento final")
 
 
 if __name__ == "__main__":

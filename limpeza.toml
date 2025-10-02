@@ -89,6 +89,80 @@ patterns = [
     '''Localizar\s+pelo\s+código:\s*\d+,\s*no\s+endereço:\s*https?://\S+''',
 ]
 
+[rodape_inquerito_delegacia]
+description = "Remove informações de inquérito policial e delegacia no rodapé"
+patterns = [
+    # Inquérito completo com variações de "Nº"
+    '''N[ºo°]?\s*Inqu[eé]rito\s+Policial:\s*\d+/\d{4}\s*-\s*Protocolo\s+\d+\s*-\s*Delegacia\s+de\s+Pol[ií]cia\s+de\s+[\wÀ-ÿ\s]+''',
+    # Versão sem o "Nº"
+    '''Inqu[eé]rito\s+Policial:\s*\d+/\d{4}\s*-\s*Protocolo\s+\d+\s*-\s*Delegacia\s+de\s+Pol[ií]cia\s+de\s+[\wÀ-ÿ\s]+''',
+]
+
+[rodape_paginacao_variada]
+description = "Remove diferentes formatos de paginação no rodapé"
+patterns = [
+    # Pág. 1/1, Pág. 1 de 1, etc
+    '''P[aá]g\.?\s*\d+\s*(?:/|de)\s*\d+''',
+    # Página 1 de 1
+    '''P[aá]gina\s+\d+\s+de\s+\d+''',
+    # Pág. com espaçamento incorreto (1de2, 2de2)
+    '''P[aá]g\.?\s*\d+\s*de\s*\d+''',
+]
+
+[rodape_contatos_delegacia]
+description = "Remove emails e telefones de delegacias com caracteres mal formatados"
+patterns = [
+    # Email com @ substituído por (a;, ?, ou outros caracteres
+    '''dp-[\w-]+[\(@?;][\w.-]*policiacivil\.go\.gov\.br\s*\(\d{2}\)\d{4}-?\d{4}''',
+    # Padrão mais amplo para capturar variações
+    '''[\w.-]+[@?;(][\w.-]*policiacivil\.go\.gov\.br\s*\(\d{2}\)\d{4}-?\d{4}''',
+]
+
+[rodape_boletim_validacao]
+description = "Remove referências a boletim online e códigos de validação"
+patterns = [
+    '''BOLETIM\s+ONLINE\s+ACESSE\s+O\s+LINK''',
+    '''C[OÓ]DIGO\s+DE\s+VALIDA[ÇC][ÃA]O:\s*[A-Za-z0-9]{10,}''',
+    '''DELEGACIA\s+DE\s+POL[IÍ]CIA\s+DE\s+[\wÀ-ÿ\s]+''',
+]
+
+[rodape_enderecos_completos]
+description = "Remove endereços completos de delegacias e núcleos"
+patterns = [
+    # Av. Dr. Deusdeth (com variações)
+    '''Av(?:enida)?\.?\s+Dr\.?\s+Deusdeth?\s+Ferreira\s+[Dd]e\s+Moura,\s*Qd\.?\s*\d+\s*Lt\.?\s*\d+,?\s*[\w\s,°º-]+CEP:?\s*\d{2}\.\d{3}-\d{3}''',
+    # Avenida Dr. Deusdete (variação do nome)
+    '''Avenida\s+Dr\.?\s+Deusdete\s+Ferreira\s+de\s+Moura,\s*Qd\.?\s*\d+,?\s*Lt\.?\s*\d+,?\s*[\w\sÀ-ÿ/—-]+CEP\.?\s*\d{2}\.\d{3}-\d{3}''',
+    # Linha de telefone/fax/email (formato completo)
+    '''Fone:\s*\(\d{2}\)\s*\d{4}-?\d{4}\s*/\s*FAX:\s*\(\d{2}\)\s*\d{4}-?\d{4}\s*[—-]\s*Email:\s*[\w.-]+[@Q]\s*[\w.-]+\.gov\.br''',
+]
+
+[rodape_verso_branco]
+description = "Remove marcações de verso em branco"
+patterns = [
+    '''\(VERSO\s+EM\s+BRANCO\)''',
+]
+
+[rodape_certidoes]
+description = "Remove textos padrão de certidões judiciais"
+patterns = [
+    # Certidão emitida por
+    '''Certid[aã]o\s+emitida\s+por\s+[\wÀ-ÿ\s]+''',
+    # Texto completo da certidão (NADA MAIS...)
+    '''NADA\s+MAIS\.\s+Era\s+tudo\s+o\s+que\s+foi\s+pedido\s+para\s+CERTIFICAR,\s+do\s+que\s+se\s+reporta\s+e\s+d[aá]\s+f[eé]\.\s+Dada\s+e\s+passada\s+nesta\s+Cidade\s+e\s+Comarca,?\s+do\s+Estado\s+de\s+Goi[aá]s\s+em\s+\d{1,2}\s+de\s+\w+\s+de\s+\d{4}\.?''',
+    # Abrangência de sistemas
+    '''ESTA\s+CERTID[AÃ]O\s+ABRANGE\s+OS\s+PROCESSOS\s+DO\s+SISTEMA\s+DE\s+PRIMEIRO\s+GRAU\s*-\s*SPG,\s*PROJUDI\s+E\s+SEEU\.?''',
+]
+
+# ===============================================================
+# RODAPÉS DE PÁGINAS INDIVIDUAIS
+# ===============================================================
+
+[rodape_pagina_individual]
+patterns = [
+    "Página\\s+\\d+\\s+de\\s+\\d+"
+]
+
 [paginacao]
 patterns = [
     "---\\s*Página\\s+\\d+\\s*---",
@@ -101,11 +175,27 @@ patterns = [
     "CÓDIGO\\s+DE\\s+VALIDAÇÃO:\\s*[a-fA-F0-9]+"
 ]
 
+# ===============================================================
+# SEPARADORES DE PÁGINAS
+# ===============================================================
+
 [separadores]
 patterns = [
     "[_\\-=*]{8,}",
     "[.]{8,}"
 ]
+
+# [configuracoes]
+# ordem_processamento = [
+#     "metadados_processuais",
+#     "assinaturas_digitais",
+#     "cabecalhos_institucionais",
+#     "textos_margem_rotacionados",
+#     "rodape_institucional",
+#     "rodape_links",
+#     "paginacao",
+#     "separadores"
+# ]
 
 [configuracoes]
 ordem_processamento = [
@@ -113,6 +203,13 @@ ordem_processamento = [
     "assinaturas_digitais",
     "cabecalhos_institucionais",
     "textos_margem_rotacionados",
+    "rodape_inquerito_delegacia",
+    "rodape_paginacao_variada",
+    "rodape_contatos_delegacia",
+    "rodape_boletim_validacao",
+    "rodape_enderecos_completos",
+    "rodape_verso_branco",
+    "rodape_certidoes",
     "rodape_institucional",
     "rodape_links",
     "paginacao",

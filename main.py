@@ -31,8 +31,9 @@ class ProcessadorPDFJuridico:
         arquivo_limpeza: str = "limpeza.toml",
         arquivo_hierarquia: str = "hierarquia.toml",
         usar_ocr: bool = True,
-        dpi_ocr: int = 150,
+        dpi_ocr: int = 200,
         debug_imgs: bool = False,
+        ocr_apenas_maior_imagem: bool = True,
     ):
         """Inicializa o processador com dois arquivos de configuração."""
         self.arquivo_limpeza = arquivo_limpeza
@@ -40,6 +41,7 @@ class ProcessadorPDFJuridico:
         self.usar_ocr = usar_ocr and OCR_DISPONIVEL
         self.dpi_ocr = dpi_ocr
         self.debug_imgs = debug_imgs
+        self.ocr_apenas_maior_imagem = ocr_apenas_maior_imagem
         
         self.padroes_limpeza = self._carregar_padroes(arquivo_limpeza)
         self.padroes_hierarquia = self._carregar_padroes(arquivo_hierarquia)
@@ -91,7 +93,7 @@ class ProcessadorPDFJuridico:
             try:
                 xref = img_info[0]
                 base_image = page.parent.extract_image(xref)
-                if base_image and len(base_image.get("image", b"")) > 50000:  # 50KB
+                if base_image and len(base_image.get("image", b"")) > 100000:  # 50000 = 50KB, 100000 = 100KB
                     tem_imagem_grande = True
                     break
             except:
@@ -174,7 +176,7 @@ class ProcessadorPDFJuridico:
     def _extrair_imagens_da_pagina(self, page, page_num: int) -> List[Image.Image]:
         """
         Extrai as imagens embutidas na página do PDF.
-        Retorna lista de imagens PIL.
+        Retorna lista de imagens PIL, ordenadas por tamanho (maiores primeiro).
         """
         imagens = []
         
@@ -201,17 +203,33 @@ class ProcessadorPDFJuridico:
                     if img.width < 200 or img.height < 200:
                         continue
                     
-                    imagens.append(img)
-                    print(f"      📷 Imagem {img_index + 1}: {img.width}x{img.height}px, {len(image_bytes)/1024:.1f}KB")
+                    # Armazena imagem com informações de tamanho
+                    imagens.append({
+                        'img': img,
+                        'size_bytes': len(image_bytes),
+                        'width': img.width,
+                        'height': img.height,
+                        'index': img_index + 1
+                    })
                     
                 except Exception as e:
-                    print(f"      ⚠️  Erro ao extrair imagem {img_index}: {e}")
+                    print(f"      ⚠️ Erro ao extrair imagem {img_index}: {e}")
                     continue
             
+            # Ordena por tamanho (maiores primeiro) - documento principal geralmente é o maior
+            imagens.sort(key=lambda x: x['size_bytes'], reverse=True)
+            
+            # Mostra informações das imagens encontradas
+            for img_data in imagens:
+                print(f"      📷 Imagem {img_data['index']}: {img_data['width']}x{img_data['height']}px, {img_data['size_bytes']/1024:.1f}KB")
+            
+            # Retorna apenas os objetos PIL Image
+            return [img_data['img'] for img_data in imagens]
+            
         except Exception as e:
-            print(f"      ⚠️  Erro ao listar imagens da página {page_num}: {e}")
+            print(f"      ⚠️ Erro ao listar imagens da página {page_num}: {e}")
         
-        return imagens
+        return []
     
     def _extrair_texto_ocr_de_imagens(self, imagens: List[Image.Image], page_num: int, debug_imgs: bool = False) -> str:
         """
@@ -219,6 +237,11 @@ class ProcessadorPDFJuridico:
         Retorna o texto combinado de todas as imagens.
         """
         textos = []
+        
+        # Se configurado para processar apenas a maior, pega só a primeira (já ordenada por tamanho)
+        if self.ocr_apenas_maior_imagem and len(imagens) > 1:
+            print(f"      ⚙️ Processando apenas a maior imagem (documento principal)")
+            imagens = [imagens[0]]
         
         for idx, img in enumerate(imagens):
             try:
@@ -247,7 +270,7 @@ class ProcessadorPDFJuridico:
                     print(f"      ✓ OCR imagem {idx+1}: {len(texto_limpo)} chars")
                 
             except Exception as e:
-                print(f"      ⚠️  Erro no OCR da imagem {idx+1}: {e}")
+                print(f"      ⚠️ Erro no OCR da imagem {idx+1}: {e}")
                 continue
         
         # Combina textos de todas as imagens
@@ -591,10 +614,12 @@ class ProcessadorPDFJuridico:
                 if idx > 0:
                     partes.append("")
                 
-                partes.append(f"{'='*60}")
+                # Separador de página (simplificado)
+                partes.append(f"{'='*8}")
                 partes.append(f"PÁGINA {numero_pagina}{movimentacao}")
-                partes.append(f"{'='*60}")
+                # partes.append(f"{'='*8}")
                 partes.append("")
+                # ==========================
             
             partes.append(conteudo)
         
@@ -706,18 +731,20 @@ def main():
     if len(sys.argv) < 2:
         print("Uso: python main.py <arquivo.pdf> [opções]")
         print("\nOpções:")
-        print("  --sem-ocr      Desativa OCR")
-        print("  --dpi=N        Define DPI do OCR (padrão: 150)")
-        print("  --debug        Salva imagens pré-processadas para debug")
+        print("  --sem-ocr        Desativa OCR")
+        print("  --dpi=N          Define DPI do OCR (padrão: 150)")
+        print("  --debug          Salva imagens pré-processadas para debug")
+        print("  --todas-imagens  Processa todas as imagens (padrão: apenas a maior)")
         print("\nExemplos:")
         print("  python main.py doc.pdf")
-        print("  python main.py doc.pdf --dpi=200")
-        print("  python main.py doc.pdf --debug")
+        print("  python main.py doc.pdf --dpi=200 --debug")
+        print("  python main.py doc.pdf --todas-imagens")
         return
     
     arquivo_pdf = sys.argv[1]
     usar_ocr = "--sem-ocr" not in sys.argv
     debug_imgs = "--debug" in sys.argv
+    todas_imagens = "--todas-imagens" in sys.argv
     
     # Extrai DPI dos argumentos
     dpi_ocr = 150  # padrão
@@ -731,6 +758,9 @@ def main():
     
     if debug_imgs:
         print("Modo DEBUG ativado - imagens serão salvas")
+    
+    if todas_imagens:
+        print("Processando TODAS as imagens encontradas")
     
     if not Path(arquivo_pdf).exists():
         print(f"Arquivo não encontrado: {arquivo_pdf}")
@@ -752,7 +782,8 @@ def main():
         "hierarquia.toml",
         usar_ocr=usar_ocr,
         dpi_ocr=dpi_ocr,
-        debug_imgs=debug_imgs
+        debug_imgs=debug_imgs,
+        ocr_apenas_maior_imagem=not todas_imagens
     )
     processador.processar(
         arquivo_pdf=arquivo_pdf,
